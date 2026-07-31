@@ -72,10 +72,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             message=f"feat({ticket_id}): generate {file_path}",
         )
 
-        generated_files.append({
-            "path": file_path,
-            "size": len(code),
-        })
+        generated_files.append(
+            {
+                "path": file_path,
+                "size": len(code),
+            }
+        )
 
     # Create or reuse Pull Request
     pr = github.ensure_pull_request(
@@ -86,14 +88,16 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     # Build artifacts summary
     artifacts = event.get("artifacts", {})
-    artifacts.update({
-        "repository": f"{config.github_repo_owner}/{config.github_repo_name}",
-        "branch": branch,
-        "commitSha": last_commit["commit"]["sha"] if last_commit else "",
-        "pullRequest": pr["url"],
-        "pullRequestNumber": pr["number"],
-        "generatedFiles": generated_files,
-    })
+    artifacts.update(
+        {
+            "repository": f"{config.github_repo_owner}/{config.github_repo_name}",
+            "branch": branch,
+            "commitSha": last_commit["commit"]["sha"] if last_commit else "",
+            "pullRequest": pr["url"],
+            "pullRequestNumber": pr["number"],
+            "generatedFiles": generated_files,
+        }
+    )
 
     # Store code generation artifact in S3
     s3.upload_json(
