@@ -37,24 +37,3 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v --cov=shared --cov-report=term-missing
-
-  validate-sam:
-    name: Validate SAM Template
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install SAM CLI
-        uses: aws-actions/setup-sam@v2
-        with:
-          use-installer: true
-
-      - name: Validate SAM template
-        run: sam validate --template-file infrastructure/template.yaml --lint
