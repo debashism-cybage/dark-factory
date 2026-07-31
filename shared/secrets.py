@@ -6,7 +6,7 @@ to avoid repeated API calls within a single Lambda invocation.
 """
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 import boto3
 

@@ -13,7 +13,7 @@ Usage:
 """
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError

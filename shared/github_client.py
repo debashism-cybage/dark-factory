@@ -31,7 +31,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Optional
+from typing import Any
 
 from shared.logger import get_logger
 from shared.secrets import get_github_token
@@ -76,8 +76,8 @@ class GitHubClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[dict[str, str]] = None,
-        body: Optional[dict[str, Any]] = None,
+        params: dict[str, str] | None = None,
+        body: dict[str, Any] | None = None,
     ) -> Any:
         """Execute a GitHub API request."""
         url = f"{self.base_url}{endpoint}"
@@ -128,23 +128,23 @@ class GitHubClient:
         """Get repository metadata."""
         return self._request("GET", "")
 
-    def get_repository_tree(self, branch: Optional[str] = None) -> list[dict[str, Any]]:
+    def get_repository_tree(self, branch: str | None = None) -> list[dict[str, Any]]:
         """Get the full file tree of the repository."""
         branch = branch or self.default_branch
         tree = self._request("GET", f"/git/trees/{branch}?recursive=1")
         return tree.get("tree", [])
 
-    def get_all_files(self, branch: Optional[str] = None) -> list[dict[str, Any]]:
+    def get_all_files(self, branch: str | None = None) -> list[dict[str, Any]]:
         """Get only file entries (blobs) from the repository tree."""
         tree = self.get_repository_tree(branch)
         return [item for item in tree if item.get("type") == "blob"]
 
-    def get_all_directories(self, branch: Optional[str] = None) -> list[dict[str, Any]]:
+    def get_all_directories(self, branch: str | None = None) -> list[dict[str, Any]]:
         """Get only directory entries (trees) from the repository tree."""
         tree = self.get_repository_tree(branch)
         return [item for item in tree if item.get("type") == "tree"]
 
-    def list_directory(self, path: str = "", branch: Optional[str] = None) -> list[dict[str, Any]]:
+    def list_directory(self, path: str = "", branch: str | None = None) -> list[dict[str, Any]]:
         """List contents of a specific directory."""
         branch = branch or self.default_branch
         contents = self._request("GET", f"/contents/{path}", params={"ref": branch})
@@ -152,12 +152,12 @@ class GitHubClient:
             return [contents]
         return contents
 
-    def get_file(self, path: str, branch: Optional[str] = None) -> dict[str, Any]:
+    def get_file(self, path: str, branch: str | None = None) -> dict[str, Any]:
         """Get GitHub metadata for a file."""
         branch = branch or self.default_branch
         return self._request("GET", f"/contents/{path}", params={"ref": branch})
 
-    def get_file_content(self, path: str, branch: Optional[str] = None) -> str:
+    def get_file_content(self, path: str, branch: str | None = None) -> str:
         """
         Get the decoded text content of a file.
 
@@ -184,7 +184,7 @@ class GitHubClient:
         with urllib.request.urlopen(request, timeout=30) as response:
             return response.read().decode("utf-8")
 
-    def get_multiple_files(self, paths: list[str], branch: Optional[str] = None) -> dict[str, str]:
+    def get_multiple_files(self, paths: list[str], branch: str | None = None) -> dict[str, str]:
         """Read multiple files, skipping any that fail."""
         result: dict[str, str] = {}
         for path in paths:
@@ -194,7 +194,7 @@ class GitHubClient:
                 logger.warning("Unable to read file", path=path, error=str(ex))
         return result
 
-    def file_exists(self, path: str, branch: Optional[str] = None) -> bool:
+    def file_exists(self, path: str, branch: str | None = None) -> bool:
         """Check if a file exists in the repository."""
         try:
             self.get_file(path, branch)
@@ -204,9 +204,9 @@ class GitHubClient:
 
     def find_files(
         self,
-        extensions: Optional[list[str]] = None,
-        contains: Optional[str] = None,
-        branch: Optional[str] = None,
+        extensions: list[str] | None = None,
+        contains: str | None = None,
+        branch: str | None = None,
     ) -> list[str]:
         """Search files by extension and/or name substring."""
         files = self.get_all_files(branch)
@@ -222,7 +222,7 @@ class GitHubClient:
 
         return results
 
-    def get_repository_summary(self, branch: Optional[str] = None) -> dict[str, Any]:
+    def get_repository_summary(self, branch: str | None = None) -> dict[str, Any]:
         """Get a lightweight summary of the repository structure."""
         files = self.get_all_files(branch)
         directories = self.get_all_directories(branch)
@@ -241,7 +241,7 @@ class GitHubClient:
             "extensions": dict(sorted(extensions.items())),
         }
 
-    def get_project_context(self, branch: Optional[str] = None) -> dict[str, Any]:
+    def get_project_context(self, branch: str | None = None) -> dict[str, Any]:
         """
         Read important project files for architecture knowledge generation.
 
@@ -272,7 +272,7 @@ class GitHubClient:
     # Write operations (branch, commit, PR)
     # -----------------------------------------------------------------------
 
-    def ensure_branch(self, branch_name: str, base_branch: Optional[str] = None) -> None:
+    def ensure_branch(self, branch_name: str, base_branch: str | None = None) -> None:
         """
         Ensure a branch exists. Creates it from base_branch if it doesn't.
 
@@ -346,7 +346,7 @@ class GitHubClient:
         branch: str,
         ticket_id: str,
         workflow_id: str,
-        base_branch: Optional[str] = None,
+        base_branch: str | None = None,
     ) -> dict[str, Any]:
         """
         Create a PR or return existing one for the branch.

@@ -13,7 +13,7 @@ Usage:
 """
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 import boto3
 
@@ -39,7 +39,7 @@ class BedrockClient:
         system_prompt: str,
         user_prompt: str,
         max_tokens: int = 4096,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
     ) -> str:
         """
         Send a single-turn conversation to Bedrock.
@@ -85,7 +85,7 @@ class BedrockClient:
         system_prompt: str,
         user_prompt: str,
         max_tokens: int = 4096,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
     ) -> dict[str, Any]:
         """
         Send a conversation and parse the response as JSON.

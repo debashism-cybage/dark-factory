@@ -13,7 +13,7 @@ Usage:
 
 import json
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 import boto3
 
@@ -45,7 +45,7 @@ class WorkflowTable:
         self,
         workflow_id: str,
         status: str,
-        agent: Optional[str] = None,
+        agent: str | None = None,
         **extra_attributes: Any,
     ) -> None:
         """
@@ -87,7 +87,7 @@ class WorkflowTable:
             agent=agent,
         )
 
-    def get_workflow(self, workflow_id: str) -> Optional[dict[str, Any]]:
+    def get_workflow(self, workflow_id: str) -> dict[str, Any] | None:
         """
         Get a workflow item by ID.
 

@@ -8,7 +8,7 @@ Input: Workflow event with 'artifacts' (from Validation Agent).
 Output: Workflow event with status 'COMPLETED' and release notes.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from shared.config import ReleaseConfig
@@ -31,7 +31,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     table = WorkflowTable(config.table_name)
 
     # Build release notes
-    completed_at = datetime.now(timezone.utc).isoformat()
+    completed_at = datetime.now(UTC).isoformat()
 
     release_notes = {
         "workflowId": workflow_id,

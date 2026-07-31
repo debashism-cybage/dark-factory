@@ -8,14 +8,13 @@ values are missing.
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 def _require(name: str) -> str:
     """Return env var value or raise with a clear message."""
     value = os.environ.get(name)
     if not value:
-        raise EnvironmentError(f"Required environment variable '{name}' is not set.")
+        raise OSError(f"Required environment variable '{name}' is not set.")
     return value
 
 
