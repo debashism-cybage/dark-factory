@@ -22,9 +22,10 @@ from typing import Any
 
 from shared.bedrock_client import BedrockClient
 from shared.config import ArchitectureConfig
+from shared.documents import build_architecture_documents
 from shared.github_client import GitHubClient
 from shared.logger import get_logger
-from shared.prompt_builder import PromptBuilder
+from shared.prompts import architecture as prompts
 from shared.s3_helper import S3Helper
 
 logger = get_logger(__name__, agent="architecture")
@@ -67,8 +68,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Generate architecture via Bedrock
         logger.info("Generating architecture knowledge")
         architecture = bedrock.converse_json(
-            system_prompt=PromptBuilder.architecture_system(),
-            user_prompt=PromptBuilder.architecture_prompt(
+            system_prompt=prompts.system_prompt(),
+            user_prompt=prompts.user_prompt(
                 repository_summary=repository_summary,
                 repository_tree=repository_tree,
                 project_context=project_context,
@@ -77,7 +78,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
         # Build markdown documents from raw architecture JSON
-        documents = PromptBuilder.build_architecture_documents(architecture)
+        documents = build_architecture_documents(architecture)
 
         # Upload to S3
         logger.info("Uploading architecture documents to S3")

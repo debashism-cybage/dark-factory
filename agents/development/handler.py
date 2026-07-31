@@ -15,7 +15,7 @@ from shared.config import DevelopmentConfig
 from shared.dynamodb_helper import WorkflowTable
 from shared.github_client import GitHubClient
 from shared.logger import get_logger
-from shared.prompt_builder import PromptBuilder
+from shared.prompts import development as prompts
 from shared.s3_helper import S3Helper
 
 logger = get_logger(__name__, agent="development")
@@ -60,8 +60,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Generating file", file_path=file_path)
 
         code = bedrock.converse(
-            system_prompt=PromptBuilder.code_generation_system(),
-            user_prompt=PromptBuilder.code_generation_prompt(event, file_path),
+            system_prompt=prompts.system_prompt(),
+            user_prompt=prompts.user_prompt(event, file_path),
             max_tokens=8192,
         )
 

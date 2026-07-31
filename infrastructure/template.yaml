@@ -204,6 +204,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref WorkflowTable
           BUCKET_NAME: !Ref ArtifactBucket
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref WorkflowTable

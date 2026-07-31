@@ -15,7 +15,7 @@ from shared.bedrock_client import BedrockClient
 from shared.config import PlanningConfig
 from shared.dynamodb_helper import WorkflowTable
 from shared.logger import get_logger
-from shared.prompt_builder import PromptBuilder
+from shared.prompts import planning as prompts
 from shared.s3_helper import S3Helper
 
 logger = get_logger(__name__, agent="planning")
@@ -60,8 +60,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Generate implementation plan
     try:
         planning = bedrock.converse_json(
-            system_prompt=PromptBuilder.planning_system(),
-            user_prompt=PromptBuilder.planning_prompt(
+            system_prompt=prompts.system_prompt(),
+            user_prompt=prompts.user_prompt(
                 workflow=event,
                 architecture_knowledge=architecture_knowledge,
             ),

@@ -86,6 +86,7 @@ class ValidationConfig(BaseConfig):
 
     table_name: str = field(default_factory=lambda: _require("TABLE_NAME"))
     bucket_name: str = field(default_factory=lambda: _require("BUCKET_NAME"))
+    bedrock_model_id: str = field(default_factory=lambda: _require("BEDROCK_MODEL_ID"))
 
 
 @dataclass(frozen=True)
