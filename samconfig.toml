@@ -1,0 +1,17 @@
+# SAM CLI configuration
+# Run `sam deploy --guided` to generate values for your environment.
+
+version = 0.1
+
+[default.build.parameters]
+template_file = "infrastructure/template.yaml"
+
+[default.deploy.parameters]
+stack_name = "dark-factory-dev"
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true
+resolve_s3 = true
+
+[default.validate.parameters]
+template_file = "infrastructure/template.yaml"
+lint = true

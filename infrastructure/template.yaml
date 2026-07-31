@@ -1,0 +1,292 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Dark Factory: AI-Driven Software Delivery Platform.
+  Transforms Jira feature requests into production-ready code
+  using specialized AI agents orchestrated through Step Functions.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 300
+    MemorySize: 256
+    Architectures:
+      - x86_64
+    Layers:
+      - !Ref SharedLayer
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  BedrockModelId:
+    Type: String
+    Default: us.amazon.nova-lite-v1:0
+
+  GitHubSecretName:
+    Type: String
+    Default: dark-factory/github-pat
+
+  GitHubRepoOwner:
+    Type: String
+
+  GitHubRepoName:
+    Type: String
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # Shared Layer (contains shared/ library code)
+  # ---------------------------------------------------------------------------
+  SharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub dark-factory-shared-${Environment}
+      Description: Shared libraries for Dark Factory agents
+      ContentUri: ./shared-layer/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.12
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB Table
+  # ---------------------------------------------------------------------------
+  WorkflowTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub dark-factory-workflows-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: WorkflowId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: WorkflowId
+          KeyType: HASH
+
+  # ---------------------------------------------------------------------------
+  # S3 Bucket
+  # ---------------------------------------------------------------------------
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub dark-factory-artifacts-${Environment}-${AWS::AccountId}
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 90
+
+  # ---------------------------------------------------------------------------
+  # Lambda Functions
+  # ---------------------------------------------------------------------------
+  WorkflowStarterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-workflow-starter-${Environment}
+      CodeUri: ./workflow-starter/
+      Handler: handler.lambda_handler
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref WorkflowStateMachine
+      Policies:
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: !GetAtt WorkflowStateMachine.Name
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /workflow
+            Method: POST
+            RestApiId: !Ref DarkFactoryApi
+
+  PlanningAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-planning-agent-${Environment}
+      CodeUri: ./agents/planning/
+      Handler: handler.lambda_handler
+      Timeout: 600
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref WorkflowTable
+          S3_BUCKET: !Ref ArtifactBucket
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WorkflowTable
+        - S3CrudPolicy:
+            BucketName: !Ref ArtifactBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:Converse
+              Resource: "*"
+
+  ArchitectureAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-architecture-agent-${Environment}
+      CodeUri: ./agents/architecture/
+      Handler: handler.lambda_handler
+      Timeout: 900
+      MemorySize: 512
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ArtifactBucket
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          GITHUB_SECRET_NAME: !Ref GitHubSecretName
+          GITHUB_REPO_OWNER: !Ref GitHubRepoOwner
+          GITHUB_REPO_NAME: !Ref GitHubRepoName
+          DEFAULT_BRANCH: main
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ArtifactBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:Converse
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GitHubSecretName}*
+
+  DevelopmentAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-development-agent-${Environment}
+      CodeUri: ./agents/development/
+      Handler: handler.lambda_handler
+      Timeout: 900
+      MemorySize: 512
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref WorkflowTable
+          BUCKET_NAME: !Ref ArtifactBucket
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          GITHUB_SECRET_NAME: !Ref GitHubSecretName
+          GITHUB_REPO_OWNER: !Ref GitHubRepoOwner
+          GITHUB_REPO_NAME: !Ref GitHubRepoName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WorkflowTable
+        - S3CrudPolicy:
+            BucketName: !Ref ArtifactBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:Converse
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GitHubSecretName}*
+
+  ValidationAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-validation-agent-${Environment}
+      CodeUri: ./agents/validation/
+      Handler: handler.lambda_handler
+      Timeout: 600
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref WorkflowTable
+          BUCKET_NAME: !Ref ArtifactBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WorkflowTable
+        - S3CrudPolicy:
+            BucketName: !Ref ArtifactBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:Converse
+              Resource: "*"
+
+  ReleaseAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-release-agent-${Environment}
+      CodeUri: ./agents/release/
+      Handler: handler.lambda_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref WorkflowTable
+          BUCKET_NAME: !Ref ArtifactBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WorkflowTable
+        - S3CrudPolicy:
+            BucketName: !Ref ArtifactBucket
+
+  # ---------------------------------------------------------------------------
+  # API Gateway
+  # ---------------------------------------------------------------------------
+  DarkFactoryApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub dark-factory-api-${Environment}
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+  # ---------------------------------------------------------------------------
+  # Step Functions State Machine
+  # ---------------------------------------------------------------------------
+  WorkflowStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub dark-factory-workflow-${Environment}
+      DefinitionUri: ./infrastructure/stepfunctions/workflow.asl.json
+      DefinitionSubstitutions:
+        PlanningAgentArn: !GetAtt PlanningAgentFunction.Arn
+        ArchitectureAgentArn: !GetAtt ArchitectureAgentFunction.Arn
+        DevelopmentAgentArn: !GetAtt DevelopmentAgentFunction.Arn
+        ValidationAgentArn: !GetAtt ValidationAgentFunction.Arn
+        ReleaseAgentArn: !GetAtt ReleaseAgentFunction.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref PlanningAgentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ArchitectureAgentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref DevelopmentAgentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ValidationAgentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ReleaseAgentFunction
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${DarkFactoryApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/workflow
+
+  StateMachineArn:
+    Description: Step Functions state machine ARN
+    Value: !Ref WorkflowStateMachine
+
+  WorkflowTableName:
+    Description: DynamoDB table name
+    Value: !Ref WorkflowTable
+
+  ArtifactBucketName:
+    Description: S3 bucket for artifacts
+    Value: !Ref ArtifactBucket

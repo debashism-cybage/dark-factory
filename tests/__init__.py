@@ -1,0 +1,1 @@
+"""Dark Factory test suite."""

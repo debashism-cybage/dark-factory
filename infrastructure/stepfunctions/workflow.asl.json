@@ -1,0 +1,159 @@
+{
+  "Comment": "Dark Factory: AI-Driven Software Delivery Workflow",
+  "StartAt": "PlanningAgent",
+  "States": {
+    "PlanningAgent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PlanningAgentArn}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$",
+      "ResultSelector": {
+        "workflowId.$": "$.Payload.workflowId",
+        "ticketId.$": "$.Payload.ticketId",
+        "summary.$": "$.Payload.summary",
+        "description.$": "$.Payload.description",
+        "priority.$": "$.Payload.priority",
+        "issueType.$": "$.Payload.issueType",
+        "project.$": "$.Payload.project",
+        "assignee.$": "$.Payload.assignee",
+        "status.$": "$.Payload.status",
+        "planning.$": "$.Payload.planning"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "WorkflowFailed"
+        }
+      ],
+      "Next": "DevelopmentAgent"
+    },
+    "DevelopmentAgent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${DevelopmentAgentArn}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$",
+      "ResultSelector": {
+        "workflowId.$": "$.Payload.workflowId",
+        "ticketId.$": "$.Payload.ticketId",
+        "summary.$": "$.Payload.summary",
+        "description.$": "$.Payload.description",
+        "priority.$": "$.Payload.priority",
+        "issueType.$": "$.Payload.issueType",
+        "project.$": "$.Payload.project",
+        "assignee.$": "$.Payload.assignee",
+        "status.$": "$.Payload.status",
+        "planning.$": "$.Payload.planning",
+        "artifacts.$": "$.Payload.artifacts"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "WorkflowFailed"
+        }
+      ],
+      "Next": "ValidationAgent"
+    },
+    "ValidationAgent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ValidationAgentArn}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$",
+      "ResultSelector": {
+        "workflowId.$": "$.Payload.workflowId",
+        "ticketId.$": "$.Payload.ticketId",
+        "summary.$": "$.Payload.summary",
+        "description.$": "$.Payload.description",
+        "priority.$": "$.Payload.priority",
+        "issueType.$": "$.Payload.issueType",
+        "project.$": "$.Payload.project",
+        "assignee.$": "$.Payload.assignee",
+        "status.$": "$.Payload.status",
+        "planning.$": "$.Payload.planning",
+        "artifacts.$": "$.Payload.artifacts"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "WorkflowFailed"
+        }
+      ],
+      "Next": "ReleaseAgent"
+    },
+    "ReleaseAgent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ReleaseAgentArn}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$",
+      "ResultSelector": {
+        "workflowId.$": "$.Payload.workflowId",
+        "ticketId.$": "$.Payload.ticketId",
+        "status.$": "$.Payload.status",
+        "completedAt.$": "$.Payload.completedAt",
+        "artifacts.$": "$.Payload.artifacts"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "WorkflowFailed"
+        }
+      ],
+      "Next": "WorkflowSucceeded"
+    },
+    "WorkflowSucceeded": {
+      "Type": "Succeed"
+    },
+    "WorkflowFailed": {
+      "Type": "Fail",
+      "Cause": "An agent encountered an unrecoverable error.",
+      "Error": "AgentExecutionFailed"
+    }
+  }
+}
