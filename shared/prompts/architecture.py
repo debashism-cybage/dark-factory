@@ -127,7 +127,7 @@ Generate EXACTLY this JSON structure:
         "namingConventions": [],
         "folderOrganization": "",
         "extensionPoints": [],
-        "recommendedLocations": {}
+        "recommendedLocations": {{}}
     }},
     "standards": {{
         "codingStandards": [],
