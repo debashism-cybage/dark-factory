@@ -264,7 +264,7 @@ class GitHubClient:
             "template.yaml",
         ]
 
-        context = self.get_multiple_files(important_files, branch)
+        context: dict[str, Any] = self.get_multiple_files(important_files, branch)
         context["repositorySummary"] = self.get_repository_summary(branch)
         return context
 

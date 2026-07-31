@@ -43,7 +43,7 @@ class StructuredLogger(logging.LoggerAdapter):
 
     def process(self, msg: str, kwargs: dict) -> tuple[str, dict]:
         # Extract our extra fields from kwargs
-        extra_fields = {k: v for k, v in self.extra.items()}
+        extra_fields = {k: v for k, v in (self.extra or {}).items()}
 
         # Any kwargs not recognized by logging go into extra_fields
         extra_kw = kwargs.pop("extra_fields", {})
