@@ -25,9 +25,27 @@ def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     if "body" in event:
         body = event["body"]
         if isinstance(body, str):
-            body = json.loads(body, strict=False)
+            try:
+                body = json.loads(body, strict=False)
+            except json.JSONDecodeError:
+                # Jira sometimes sends unescaped quotes in field values.
+                # Fall back to extracting ticketId with regex if JSON is broken.
+                import re
+
+                ticket_match = re.search(r'"ticketId"\s*:\s*"([^"]+)"', body)
+                summary_match = re.search(r'"summary"\s*:\s*"(.*?)",?\s*"(?:description|priority|issueType)', body, re.DOTALL)
+
+                return {
+                    "ticketId": ticket_match.group(1) if ticket_match else "",
+                    "summary": summary_match.group(1).replace('\\"', '"') if summary_match else "",
+                    "description": "",
+                    "priority": "",
+                    "issueType": "",
+                    "project": "",
+                    "assignee": "",
+                }
         # Handle Jira Automation "Issue data" format
-        if "issue" in body:
+        if isinstance(body, dict) and "issue" in body:
             return _parse_jira_issue_data(body)
         return body
     # Direct invocation (e.g. from Step Functions test)
