@@ -35,11 +35,15 @@ $LambdaMap = @{
     "workflow-starter" = @{ Source = "workflow-starter";      FunctionName = "workflow-starter" }
 }
 
-$DeployDir = ".\deploy"
-$SharedDir = ".\shared"
+$DeployDir = Join-Path $PSScriptRoot "deploy"
+$SharedDir = Join-Path $PSScriptRoot "shared"
 $ProjectRoot = $PSScriptRoot
 
-if (-not $ProjectRoot) { $ProjectRoot = Get-Location }
+if (-not $ProjectRoot) {
+    $ProjectRoot = (Get-Location).Path
+    $DeployDir = Join-Path $ProjectRoot "deploy"
+    $SharedDir = Join-Path $ProjectRoot "shared"
+}
 
 # ---------------------------------------------------------------------------
 # Functions
@@ -84,7 +88,13 @@ function Deploy-Lambda {
 
     # Copy shared library
     $sharedDest = Join-Path $stagingDir "shared"
-    Copy-Item -Recurse $SharedDir $sharedDest
+    Copy-Item -Recurse -Force $SharedDir $sharedDest
+
+    # Verify shared was copied
+    if (-not (Test-Path (Join-Path $sharedDest "__init__.py"))) {
+        Write-Host "  ERROR: shared/ library not found in package!" -ForegroundColor Red
+        return $false
+    }
 
     # Create zip
     Compress-Archive -Path "$stagingDir\*" -DestinationPath $zipFile -Force

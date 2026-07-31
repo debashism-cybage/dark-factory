@@ -25,9 +25,31 @@ def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     if "body" in event:
         body = event["body"]
         if isinstance(body, str):
-            return json.loads(body, strict=False)
+            body = json.loads(body, strict=False)
+        # Handle Jira Automation "Issue data" format
+        if "issue" in body:
+            return _parse_jira_issue_data(body)
         return body
+    # Direct invocation (e.g. from Step Functions test)
+    if "issue" in event:
+        return _parse_jira_issue_data(event)
     return event
+
+
+def _parse_jira_issue_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Convert Jira Automation 'Issue data' format to our workflow format."""
+    issue = data.get("issue", {})
+    fields = issue.get("fields", {})
+
+    return {
+        "ticketId": issue.get("key", ""),
+        "summary": fields.get("summary", ""),
+        "description": fields.get("description", "") or "",
+        "priority": fields.get("priority", {}).get("name", "") if isinstance(fields.get("priority"), dict) else str(fields.get("priority", "")),
+        "issueType": fields.get("issuetype", {}).get("name", "") if isinstance(fields.get("issuetype"), dict) else str(fields.get("issuetype", "")),
+        "project": fields.get("project", {}).get("key", "") if isinstance(fields.get("project"), dict) else str(fields.get("project", "")),
+        "assignee": fields.get("assignee", {}).get("displayName", "") if isinstance(fields.get("assignee"), dict) else str(fields.get("assignee", "") or ""),
+    }
 
 
 def _api_response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
