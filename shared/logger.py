@@ -55,7 +55,11 @@ class StructuredLogger(logging.LoggerAdapter):
         return msg, kwargs
 
     def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        extra_fields = {k: v for k, v in kwargs.items() if k not in ("exc_info", "stack_info", "stacklevel", "extra")}
+        extra_fields = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ("exc_info", "stack_info", "stacklevel", "extra")
+        }
         for k in extra_fields:
             kwargs.pop(k)
         kwargs.setdefault("extra_fields", {})
@@ -63,7 +67,11 @@ class StructuredLogger(logging.LoggerAdapter):
         super().info(msg, *args, **kwargs)
 
     def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        extra_fields = {k: v for k, v in kwargs.items() if k not in ("exc_info", "stack_info", "stacklevel", "extra")}
+        extra_fields = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ("exc_info", "stack_info", "stacklevel", "extra")
+        }
         for k in extra_fields:
             kwargs.pop(k)
         kwargs.setdefault("extra_fields", {})
@@ -71,7 +79,11 @@ class StructuredLogger(logging.LoggerAdapter):
         super().warning(msg, *args, **kwargs)
 
     def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        extra_fields = {k: v for k, v in kwargs.items() if k not in ("exc_info", "stack_info", "stacklevel", "extra")}
+        extra_fields = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ("exc_info", "stack_info", "stacklevel", "extra")
+        }
         for k in extra_fields:
             kwargs.pop(k)
         kwargs.setdefault("extra_fields", {})
@@ -79,7 +91,11 @@ class StructuredLogger(logging.LoggerAdapter):
         super().error(msg, *args, **kwargs)
 
     def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        extra_fields = {k: v for k, v in kwargs.items() if k not in ("exc_info", "stack_info", "stacklevel", "extra")}
+        extra_fields = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ("exc_info", "stack_info", "stacklevel", "extra")
+        }
         for k in extra_fields:
             kwargs.pop(k)
         kwargs.setdefault("extra_fields", {})

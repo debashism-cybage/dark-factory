@@ -122,8 +122,7 @@ class BedrockClient:
                 raw_response=raw[:500],
             )
             raise ValueError(
-                f"Invalid JSON returned by Bedrock: {e}\n"
-                f"Response (first 500 chars): {raw[:500]}"
+                f"Invalid JSON returned by Bedrock: {e}\nResponse (first 500 chars): {raw[:500]}"
             ) from e
 
     @staticmethod

@@ -96,11 +96,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     })
 
     # Store code generation artifact in S3
-    s3.upload_json(f"artifacts/{workflow_id}-generated-code.json", {
-        "files": generated_files,
-        "branch": branch,
-        "pullRequest": pr["url"],
-    })
+    s3.upload_json(
+        f"artifacts/{workflow_id}-generated-code.json",
+        {
+            "files": generated_files,
+            "branch": branch,
+            "pullRequest": pr["url"],
+        },
+    )
 
     # Update DynamoDB
     table.update_status(

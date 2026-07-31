@@ -89,8 +89,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         execution_arn=execution_arn,
     )
 
-    return _api_response(200, {
-        "message": "Workflow started",
-        "workflowId": workflow_id,
-        "executionArn": execution_arn,
-    })
+    return _api_response(
+        200,
+        {
+            "message": "Workflow started",
+            "workflowId": workflow_id,
+            "executionArn": execution_arn,
+        },
+    )
