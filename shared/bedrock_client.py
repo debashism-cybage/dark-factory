@@ -66,7 +66,7 @@ class BedrockClient:
                     "content": [{"text": user_prompt}],
                 }
             ],
-            inferenceConfig=inference_config,
+            inferenceConfig=inference_config,  # type: ignore[arg-type]
         )
 
         text = response["output"]["message"]["content"][0]["text"]
