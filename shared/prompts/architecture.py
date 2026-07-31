@@ -10,11 +10,13 @@ from typing import Any
 
 
 def system_prompt() -> str:
-    """System prompt for the architecture agent."""
     return (
-        "You are a Senior Software Architect. "
-        "You analyze repositories and produce structured architectural knowledge. "
-        "Return only valid JSON. No markdown. No explanations."
+        "You are an expert Software Architect and AI Knowledge Engineer. "
+        "Your task is to extract durable architectural knowledge from software repositories. "
+        "Never invent information. "
+        "Only infer conclusions supported by repository evidence. "
+        "If something cannot be determined, return 'Not detected from repository.'. "
+        "Return ONLY valid JSON matching the requested schema."
     )
 
 
@@ -24,13 +26,45 @@ def user_prompt(
     project_context: dict[str, Any],
 ) -> str:
     """Build the user prompt for architecture knowledge generation."""
-    return f"""Analyze this GitHub repository and generate long-term architectural knowledge.
+    return f"""Analyze this GitHub repository and build a long-lived architectural knowledge base.
 
 This knowledge will be consumed by Planning, Development, Validation and Release agents.
 
-DO NOT write code.
-DO NOT generate implementation plans.
-Only analyze the project structure and architecture.
+Your goal is NOT to summarize the repository.
+
+Your goal is to extract durable architectural knowledge.
+
+Only describe what is supported by repository evidence.
+
+Never invent functionality.
+
+Never assume implementation details.
+
+If information cannot be determined, explicitly return:
+
+"Not detected from repository."
+
+Focus on:
+
+- Project purpose
+- Technology stack
+- Architecture style
+- Layer responsibilities
+- Major modules
+- Module responsibilities
+- Repository organization
+- Coding conventions
+- Naming conventions
+- Configuration strategy
+- Dependency management
+- External integrations
+- Entry points
+- Build process
+- Testing approach
+- Security practices
+- Architectural constraints
+
+Provide information that another AI agent could use without re-analyzing the repository.
 
 --------------------------------------------------
 Repository Summary
@@ -67,19 +101,33 @@ Generate EXACTLY this JSON structure:
     }},
     "architecture": {{
         "style": "",
+        "styleReason": "",
         "layers": [],
+        "layerResponsibilities": [],
         "majorModules": [],
+        "moduleResponsibilities": [],
         "designPatterns": [],
+        "dependencyFlow": [],
         "externalDependencies": [],
         "configurationFiles": [],
-        "entryPoints": []
+        "entryPoints": [],
+        "authentication": "",
+        "routing": "",
+        "stateManagement": "",
+        "externalServices": [],
+        "buildProcess": "",
+        "architecturalConstraints": [],
+        "technicalRisks": []
     }},
     "repository": {{
         "importantDirectories": [],
         "importantFiles": [],
+        "directoryDescriptions": [],
         "codingConventions": [],
         "namingConventions": [],
-        "folderOrganization": ""
+        "folderOrganization": "",
+        "extensionPoints": [],
+        "recommendedLocations": {}
     }},
     "standards": {{
         "codingStandards": [],
