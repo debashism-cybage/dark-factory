@@ -33,7 +33,11 @@ def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
                 import re
 
                 ticket_match = re.search(r'"ticketId"\s*:\s*"([^"]+)"', body)
-                summary_match = re.search(r'"summary"\s*:\s*"(.*?)",?\s*"(?:description|priority|issueType)', body, re.DOTALL)
+                summary_match = re.search(
+                    r'"summary"\s*:\s*"(.*?)",?\s*"(?:description|priority|issueType)',
+                    body,
+                    re.DOTALL,
+                )
 
                 return {
                     "ticketId": ticket_match.group(1) if ticket_match else "",
@@ -63,10 +67,18 @@ def _parse_jira_issue_data(data: dict[str, Any]) -> dict[str, Any]:
         "ticketId": issue.get("key", ""),
         "summary": fields.get("summary", ""),
         "description": fields.get("description", "") or "",
-        "priority": fields.get("priority", {}).get("name", "") if isinstance(fields.get("priority"), dict) else str(fields.get("priority", "")),
-        "issueType": fields.get("issuetype", {}).get("name", "") if isinstance(fields.get("issuetype"), dict) else str(fields.get("issuetype", "")),
-        "project": fields.get("project", {}).get("key", "") if isinstance(fields.get("project"), dict) else str(fields.get("project", "")),
-        "assignee": fields.get("assignee", {}).get("displayName", "") if isinstance(fields.get("assignee"), dict) else str(fields.get("assignee", "") or ""),
+        "priority": fields.get("priority", {}).get("name", "")
+        if isinstance(fields.get("priority"), dict)
+        else str(fields.get("priority", "")),
+        "issueType": fields.get("issuetype", {}).get("name", "")
+        if isinstance(fields.get("issuetype"), dict)
+        else str(fields.get("issuetype", "")),
+        "project": fields.get("project", {}).get("key", "")
+        if isinstance(fields.get("project"), dict)
+        else str(fields.get("project", "")),
+        "assignee": fields.get("assignee", {}).get("displayName", "")
+        if isinstance(fields.get("assignee"), dict)
+        else str(fields.get("assignee", "") or ""),
     }
 
 
