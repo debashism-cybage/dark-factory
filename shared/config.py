@@ -54,6 +54,9 @@ class PlanningConfig(BaseConfig):
     table_name: str = field(default_factory=lambda: _require("TABLE_NAME"))
     s3_bucket: str = field(default_factory=lambda: _require("S3_BUCKET"))
     bedrock_model_id: str = field(default_factory=lambda: _require("BEDROCK_MODEL_ID"))
+    github_secret_name: str = field(default_factory=lambda: _require("GITHUB_SECRET_NAME"))
+    github_repo_owner: str = field(default_factory=lambda: _require("GITHUB_REPO_OWNER"))
+    github_repo_name: str = field(default_factory=lambda: _require("GITHUB_REPO_NAME"))
 
 
 @dataclass(frozen=True)

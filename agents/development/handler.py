@@ -1,25 +1,31 @@
 """
 Development Agent Lambda Handler.
 
-Generates or modifies source code via Bedrock based on the planning output,
-commits each file to a feature branch on GitHub, and creates a Pull Request.
+The Development Agent is a pure Implementer.
+It consumes the implementationContract produced by the Planning Agent
+and executes it without additional reasoning or repository analysis.
 
-Before generating code, the agent:
-1. Extracts keywords from the Jira ticket and planning output.
-2. Searches the target repository for relevant existing files.
-3. Builds a RepositoryContext with candidate files.
-4. Downloads only the relevant candidate files (ranked, top 3 sent to LLM).
-5. Uses an AI reasoning step to decide MODIFY vs CREATE (heuristic fallback).
-6. Loads selective architecture knowledge from S3 based on ticket type.
+Execution flow:
+1. For each file in implementationContract:
+   a. Download (MODIFY) or verify absence (CREATE).
+   b. Verify SHA256 matches the Planning Agent's hash.
+   c. Generate the smallest safe change via Bedrock.
+   d. Self-review: verify the change satisfies the ticket.
+2. Run build verification (clone, apply all changes, build).
+   - If build fails, retry code generation with build error context.
+   - If build still fails, abort — no commit, no PR.
+3. Commit all files to GitHub.
+4. Create Pull Request.
 
-Input: Workflow event with 'planning' (from Planning Agent).
-Output: Workflow event enriched with 'artifacts' and status 'DEVELOPMENT_COMPLETE'.
+Input: Workflow event with 'planning.implementationContract' (from Planning Agent).
+Output: Workflow event enriched with 'artifacts' and status.
 """
 
-import re
+from hashlib import sha256
 from typing import Any
 
 from shared.bedrock_client import BedrockClient
+from shared.build_verifier import BuildVerifier
 from shared.config import DevelopmentConfig
 from shared.dynamodb_helper import WorkflowTable
 from shared.github_client import GitHubClient
@@ -29,613 +35,160 @@ from shared.s3_helper import S3Helper
 
 logger = get_logger(__name__, agent="development")
 
-# Maximum number of candidate files to download from the repository
-MAX_CANDIDATE_FILES = 10
-
-# Maximum candidate files sent to the LLM in prompts (keeps context small)
-MAX_CONTEXT_FILES = 3
-
-# Architecture knowledge documents stored in S3
-ARCHITECTURE_DOCS: dict[str, str] = {
-    "metadata": "architecture/metadata.json",
-    "project": "architecture/project.md",
-    "architecture": "architecture/architecture.md",
-    "repository": "architecture/repository.md",
-    "standards": "architecture/standards.md",
-}
-
-# Keywords that indicate a UI/frontend ticket
-UI_KEYWORDS = {
-    "ui",
-    "frontend",
-    "component",
-    "page",
-    "view",
-    "widget",
-    "button",
-    "form",
-    "modal",
-    "dialog",
-    "layout",
-    "css",
-    "style",
-    "html",
-    "template",
-    "angular",
-    "react",
-    "vue",
-    "login",
-    "dashboard",
-    "screen",
-    "display",
-}
-
-# Keywords that indicate a backend ticket
-BACKEND_KEYWORDS = {
-    "api",
-    "endpoint",
-    "service",
-    "controller",
-    "repository",
-    "database",
-    "query",
-    "migration",
-    "schema",
-    "model",
-    "middleware",
-    "server",
-    "lambda",
-    "handler",
-    "rest",
-    "graphql",
-    "grpc",
-    "kafka",
-    "queue",
-}
-
 
 # ---------------------------------------------------------------------------
-# Step 1: Keyword extraction
+# SHA256 verification
 # ---------------------------------------------------------------------------
 
 
-def _extract_keywords(event: dict[str, Any]) -> list[str]:
+def _verify_sha256(content: str, expected_hash: str | None) -> bool:
     """
-    Extract search keywords from the ticket and planning output.
-
-    Sources:
-        - Ticket summary (split into meaningful words)
-        - Ticket description
-        - planning.affectedModules
-        - planning.filesToGenerate (directory and filename parts)
-
-    Returns:
-        Deduplicated list of keywords (lowercased, min 3 chars).
-    """
-    keywords: set[str] = set()
-    planning = event.get("planning", {})
-
-    # From ticket summary — extract meaningful words (3+ chars, no stop words)
-    summary = event.get("summary", "")
-    stop_words = {
-        "the",
-        "and",
-        "for",
-        "from",
-        "with",
-        "this",
-        "that",
-        "have",
-        "has",
-        "are",
-        "was",
-        "were",
-        "been",
-        "being",
-        "will",
-        "would",
-        "could",
-        "should",
-        "can",
-        "may",
-        "might",
-        "shall",
-        "not",
-        "but",
-        "its",
-        "into",
-        "over",
-        "under",
-        "between",
-        "change",
-        "update",
-        "add",
-        "remove",
-        "fix",
-        "implement",
-        "create",
-        "delete",
-        "modify",
-    }
-    words = re.findall(r"[a-zA-Z]+", summary)
-    for word in words:
-        w = word.lower()
-        if len(w) >= 3 and w not in stop_words:
-            keywords.add(w)
-
-    # From ticket description
-    description = event.get("description", "")
-    desc_words = re.findall(r"[a-zA-Z]+", description)
-    for word in desc_words:
-        w = word.lower()
-        if len(w) >= 3 and w not in stop_words:
-            keywords.add(w)
-
-    # From affected modules
-    for module in planning.get("affectedModules", []):
-        parts = re.findall(r"[a-zA-Z]+", module)
-        for part in parts:
-            if len(part) >= 3:
-                keywords.add(part.lower())
-
-    # From filesToGenerate — extract directory names and file stems
-    for file_path in planning.get("filesToGenerate", []):
-        parts = re.split(r"[/\\.]", file_path)
-        for part in parts:
-            if len(part) >= 3:
-                keywords.add(part.lower())
-
-    return list(keywords)
-
-
-# ---------------------------------------------------------------------------
-# Step 2: Repository search and context building
-# ---------------------------------------------------------------------------
-
-
-def _build_repository_context(
-    github: GitHubClient,
-    keywords: list[str],
-    files_to_generate: list[str],
-    branch: str | None = None,
-) -> dict[str, Any]:
-    """
-    Search the repository and build a RepositoryContext object.
-
-    Searches by filename using keywords, then categorizes results
-    into components, services, routes, and models.
+    Verify file content matches the expected SHA256 from the Planning Agent.
 
     Args:
-        github: Initialized GitHubClient.
-        keywords: Keywords extracted from the ticket.
-        files_to_generate: Planned file paths from planning agent.
-        branch: Target branch to search.
+        content: Current file content from GitHub.
+        expected_hash: SHA256 hex digest recorded at planning time.
 
     Returns:
-        RepositoryContext dict.
+        True if hash matches or no hash was provided, False if mismatch.
     """
-    # Search for files matching keywords
-    search_results = github.search_files_by_keywords(
-        keywords=keywords,
-        branch=branch,
-        max_results=MAX_CANDIDATE_FILES,
-    )
+    if not expected_hash:
+        return True
 
-    candidate_files = [r["path"] for r in search_results]
-
-    # Also check if any of the planned files already exist
-    for file_path in files_to_generate:
-        if file_path not in candidate_files and github.file_exists(file_path, branch):
-            candidate_files.append(file_path)
-
-    # Categorize files by type
-    components: list[str] = []
-    services: list[str] = []
-    routes: list[str] = []
-    models: list[str] = []
-
-    for path in candidate_files:
-        path_lower = path.lower()
-        if any(kw in path_lower for kw in ["component", "widget", "view", "page"]):
-            components.append(path)
-        elif any(kw in path_lower for kw in ["service", "client", "api", "helper"]):
-            services.append(path)
-        elif any(kw in path_lower for kw in ["route", "router", "routing"]):
-            routes.append(path)
-        elif any(kw in path_lower for kw in ["model", "schema", "entity", "dto"]):
-            models.append(path)
-
-    # Detect framework from file extensions and config files
-    framework = _detect_framework(candidate_files)
-
-    context: dict[str, Any] = {
-        "candidateFiles": candidate_files,
-        "existingComponents": components,
-        "existingServices": services,
-        "existingRoutes": routes,
-        "existingModels": models,
-        "framework": framework,
-        "architectureSummary": "",
-    }
-
-    return context
-
-
-def _detect_framework(file_paths: list[str]) -> str:
-    """Detect framework from file paths heuristically."""
-    all_paths = " ".join(file_paths).lower()
-
-    if ".tsx" in all_paths or ".jsx" in all_paths:
-        if "next" in all_paths:
-            return "Next.js"
-        return "React"
-    if "angular" in all_paths or ".component.ts" in all_paths:
-        return "Angular"
-    if ".vue" in all_paths:
-        return "Vue"
-    if ".py" in all_paths:
-        if "django" in all_paths:
-            return "Django"
-        if "flask" in all_paths:
-            return "Flask"
-        if "fastapi" in all_paths:
-            return "FastAPI"
-        return "Python"
-    if ".java" in all_paths:
-        if "spring" in all_paths:
-            return "Spring"
-        return "Java"
-    return ""
+    actual_hash = sha256(content.encode("utf-8")).hexdigest()
+    return actual_hash == expected_hash
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Download candidate files
+# Self-review
 # ---------------------------------------------------------------------------
 
 
-def _download_candidate_files(
-    github: GitHubClient,
-    candidate_files: list[str],
-    branch: str | None = None,
-) -> dict[str, str]:
-    """
-    Download content for candidate files (max MAX_CANDIDATE_FILES).
-
-    Args:
-        github: Initialized GitHubClient.
-        candidate_files: List of file paths to download.
-        branch: Target branch.
-
-    Returns:
-        Dict of path -> file content.
-    """
-    files_to_download = candidate_files[:MAX_CANDIDATE_FILES]
-    logger.info(
-        "Downloading candidate files",
-        file_count=len(files_to_download),
-        files=files_to_download,
-    )
-    return github.get_multiple_files(files_to_download, branch)
-
-
-# ---------------------------------------------------------------------------
-# Step 3b: Rank candidate files by relevance (Improvement #2)
-# ---------------------------------------------------------------------------
-
-
-def _rank_candidate_files(
-    candidate_files: list[str],
-    files_to_generate: list[str],
-    keywords: list[str],
-    ai_target_files: list[str] | None = None,
-) -> list[str]:
-    """
-    Rank candidate files by relevance and return the top MAX_CONTEXT_FILES.
-
-    Priority:
-        1. Exact filename match with filesToGenerate (highest priority).
-        2. Files suggested by the AI decision step.
-        3. Existing component/service matching ticket keywords (keyword score).
-
-    Args:
-        candidate_files: All candidate file paths found in the repo.
-        files_to_generate: Planned file paths from planning agent.
-        keywords: Extracted keywords from the ticket.
-        ai_target_files: Files suggested by the AI decision step (if available).
-
-    Returns:
-        Top MAX_CONTEXT_FILES paths, ranked by relevance.
-    """
-    scored: list[tuple[float, str]] = []
-
-    files_to_generate_lower = {f.lower() for f in files_to_generate}
-    ai_targets_lower = {f.lower() for f in (ai_target_files or [])}
-
-    for path in candidate_files:
-        path_lower = path.lower()
-        score = 0.0
-
-        # Priority 1: Exact filename match with filesToGenerate
-        if path_lower in files_to_generate_lower:
-            score += 100.0
-
-        # Priority 2: Suggested by AI decision step
-        if path_lower in ai_targets_lower:
-            score += 50.0
-
-        # Priority 3: Keyword relevance
-        keyword_hits = sum(1 for kw in keywords if kw in path_lower)
-        score += keyword_hits * 5.0
-
-        scored.append((score, path))
-
-    # Sort descending by score
-    scored.sort(key=lambda x: -x[0])
-
-    ranked = [path for _, path in scored[:MAX_CONTEXT_FILES]]
-
-    logger.info(
-        "Candidate files ranked",
-        top_files=ranked,
-        total_candidates=len(candidate_files),
-    )
-
-    return ranked
-
-
-# ---------------------------------------------------------------------------
-# Step 4: MODIFY vs CREATE decision (AI-based with heuristic fallback)
-# ---------------------------------------------------------------------------
-
-
-def _decide_action_ai(
+def _self_review(
     bedrock: BedrockClient,
     event: dict[str, Any],
-    repo_context: dict[str, Any],
-    architecture_summary: str,
-) -> list[dict[str, Any]] | None:
+    file_entry: dict[str, Any],
+    generated_code: str,
+    existing_code: str | None,
+    protected_files: list[str],
+) -> str:
     """
-    Use the LLM to decide MODIFY vs CREATE for each file in filesToGenerate.
+    Perform an AI self-review of the generated code.
 
-    This is the primary decision method. If it fails (bad JSON, exception),
-    the caller should fall back to heuristic decision.
+    Returns:
+        "PASS" or "FAIL: <reason>".
+    """
+    try:
+        result = bedrock.converse(
+            system_prompt=prompts.review_system_prompt(),
+            user_prompt=prompts.review_user_prompt(
+                event=event,
+                file_entry=file_entry,
+                generated_code=generated_code,
+                existing_code=existing_code,
+                protected_files=protected_files,
+            ),
+            max_tokens=512,
+        )
+
+        result_stripped = result.strip().upper()
+        if result_stripped.startswith("PASS"):
+            return "PASS"
+        return f"FAIL: {result.strip()}"
+
+    except Exception as ex:
+        logger.warning("Self-review failed, defaulting to PASS", error=str(ex))
+        return "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Build verification
+# ---------------------------------------------------------------------------
+
+
+def _run_build_verification(
+    config: DevelopmentConfig,
+    github: GitHubClient,
+    branch: str,
+    generated_files: dict[str, str],
+) -> dict[str, Any]:
+    """
+    Clone the repository, apply changes, and run the build.
+
+    Args:
+        config: DevelopmentConfig with repo info.
+        github: GitHubClient (for token access).
+        branch: Feature branch name.
+        generated_files: Dict of file_path -> generated content.
+
+    Returns:
+        Build result dict: {status, duration, logs}.
+    """
+    repo_url = f"https://github.com/{config.github_repo_owner}/{config.github_repo_name}.git"
+
+    verifier = BuildVerifier(
+        repo_url=repo_url,
+        branch=branch,
+        token=github.token,
+    )
+
+    return verifier.verify(generated_files)
+
+
+# ---------------------------------------------------------------------------
+# Build-fix retry
+# ---------------------------------------------------------------------------
+
+
+def _regenerate_with_build_fix(
+    bedrock: BedrockClient,
+    event: dict[str, Any],
+    file_entries: list[dict[str, Any]],
+    generated_files: dict[str, str],
+    build_logs: str,
+) -> dict[str, str]:
+    """
+    Regenerate code for files that caused build errors.
+
+    Uses the build error output to guide the LLM fix.
 
     Args:
         bedrock: Initialized BedrockClient.
-        event: Full workflow event.
-        repo_context: RepositoryContext dict.
-        architecture_summary: Condensed architecture knowledge.
+        event: Workflow event.
+        file_entries: File entries from implementationContract.
+        generated_files: Current generated code (path -> content).
+        build_logs: Build error output.
 
     Returns:
-        List of decision dicts, or None if the AI call fails.
+        Updated generated_files dict with fixes applied.
     """
-    try:
-        decisions = bedrock.converse_json(
-            system_prompt=prompts.decision_system_prompt(),
-            user_prompt=prompts.decision_user_prompt(
-                workflow=event,
-                repository_context=repo_context,
-                architecture_summary=architecture_summary,
+    logger.info("Retry started — regenerating code with build error context")
+
+    for file_entry in file_entries:
+        file_path = file_entry["path"]
+        current_content = generated_files.get(file_path)
+
+        if not current_content:
+            continue
+
+        expected_changes = file_entry.get("expectedChanges", [])
+
+        fixed_code = bedrock.converse(
+            system_prompt=prompts.build_fix_system_prompt(),
+            user_prompt=prompts.build_fix_user_prompt(
+                event=event,
+                file_path=file_path,
+                current_content=current_content,
+                build_logs=build_logs,
+                expected_changes=expected_changes,
             ),
-            max_tokens=2048,
-            temperature=0.1,
+            max_tokens=8192,
         )
 
-        # The LLM should return a list; validate structure
-        if isinstance(decisions, list):
-            validated: list[dict[str, Any]] = []
-            for d in decisions:
-                if (
-                    isinstance(d, dict)
-                    and d.get("action") in ("MODIFY", "CREATE")
-                    and isinstance(d.get("targetFiles"), list)
-                    and len(d["targetFiles"]) > 0
-                ):
-                    validated.append(d)
+        generated_files[file_path] = fixed_code
+        logger.info("File regenerated with build fix", file_path=file_path)
 
-            if validated:
-                logger.info(
-                    "AI decision step successful",
-                    decision_count=len(validated),
-                )
-                return validated
-
-        logger.warning(
-            "AI decision returned unexpected format, falling back to heuristic",
-            raw_response_type=type(decisions).__name__,
-        )
-        return None
-
-    except Exception as ex:
-        logger.warning(
-            "AI decision step failed, falling back to heuristic",
-            error=str(ex),
-        )
-        return None
-
-
-def _decide_action_heuristic(
-    file_path: str,
-    candidate_files: list[str],
-    existing_contents: dict[str, str],
-    keywords: list[str],
-) -> dict[str, Any]:
-    """
-    Heuristic fallback: Decide whether to MODIFY or CREATE.
-
-    Logic:
-        1. If file_path already exists in the repo -> MODIFY.
-        2. If a candidate file strongly matches the target -> MODIFY that file.
-        3. Otherwise -> CREATE.
-
-    Args:
-        file_path: The planned file path from filesToGenerate.
-        candidate_files: All candidate file paths from repo search.
-        existing_contents: Downloaded file contents (path -> content).
-        keywords: Extracted keywords for matching.
-
-    Returns:
-        Decision dict with action, reason, and targetFiles.
-    """
-    # Case 1: The exact file already exists
-    if file_path in existing_contents:
-        return {
-            "action": "MODIFY",
-            "reason": f"File '{file_path}' already exists in the repository.",
-            "targetFiles": [file_path],
-        }
-
-    # Case 2: Find the best matching candidate file
-    best_match = _find_best_match(file_path, candidate_files, keywords)
-    if best_match:
-        return {
-            "action": "MODIFY",
-            "reason": (
-                f"Existing file '{best_match}' matches the target "
-                f"'{file_path}'. Modifying instead of creating new."
-            ),
-            "targetFiles": [best_match],
-        }
-
-    # Case 3: No suitable existing file found
-    return {
-        "action": "CREATE",
-        "reason": f"No existing file found that matches '{file_path}'. Creating new file.",
-        "targetFiles": [file_path],
-    }
-
-
-def _find_best_match(
-    target_path: str,
-    candidate_files: list[str],
-    keywords: list[str],
-) -> str | None:
-    """
-    Find the best matching candidate for a target file path.
-
-    Matches based on filename similarity and keyword overlap.
-
-    Returns:
-        Best matching file path, or None if no good match found.
-    """
-    if not candidate_files:
-        return None
-
-    # Extract the filename stem from target
-    target_parts = re.split(r"[/\\.]", target_path.lower())
-    target_stem_parts = [p for p in target_parts if len(p) >= 3]
-
-    best_score = 0.0
-    best_file: str | None = None
-
-    for candidate in candidate_files:
-        candidate_parts = re.split(r"[/\\.]", candidate.lower())
-        candidate_stem_parts = [p for p in candidate_parts if len(p) >= 3]
-
-        # Score based on shared path segments
-        shared = set(target_stem_parts) & set(candidate_stem_parts)
-        score = float(len(shared))
-
-        # Bonus: keywords that appear in the candidate path
-        candidate_lower = candidate.lower()
-        keyword_hits = sum(1 for kw in keywords if kw in candidate_lower)
-        score += keyword_hits * 0.5
-
-        if score > best_score:
-            best_score = score
-            best_file = candidate
-
-    # Require a minimum relevance score to match
-    if best_score >= 2.0:
-        return best_file
-
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Step 5: Load architecture knowledge from S3 (Improvement #3 — selective)
-# ---------------------------------------------------------------------------
-
-
-def _classify_ticket_type(keywords: list[str]) -> str:
-    """
-    Classify the ticket as 'ui', 'backend', or 'general' based on keywords.
-
-    Returns:
-        'ui', 'backend', or 'general'.
-    """
-    ui_score = sum(1 for kw in keywords if kw in UI_KEYWORDS)
-    backend_score = sum(1 for kw in keywords if kw in BACKEND_KEYWORDS)
-
-    if ui_score > backend_score:
-        return "ui"
-    if backend_score > ui_score:
-        return "backend"
-    return "general"
-
-
-def _load_architecture_knowledge(s3: S3Helper, keywords: list[str]) -> str:
-    """
-    Load selective architecture knowledge documents from S3.
-
-    Always includes metadata.json, then selects additional docs based on
-    ticket classification:
-        - UI tickets: repository.md + standards.md
-        - Backend tickets: architecture.md + standards.md
-        - General: project.md + architecture.md
-
-    If no architecture knowledge is available, returns empty string
-    and the agent continues normally.
-
-    Args:
-        s3: Initialized S3Helper.
-        keywords: Extracted keywords (used to classify ticket type).
-
-    Returns:
-        Combined architecture knowledge as a single string.
-    """
-    ticket_type = _classify_ticket_type(keywords)
-    logger.info("Ticket classified for architecture selection", ticket_type=ticket_type)
-
-    # Always include metadata
-    docs_to_load: list[str] = [ARCHITECTURE_DOCS["metadata"]]
-
-    # Select relevant docs based on ticket type
-    if ticket_type == "ui":
-        docs_to_load.append(ARCHITECTURE_DOCS["repository"])
-        docs_to_load.append(ARCHITECTURE_DOCS["standards"])
-    elif ticket_type == "backend":
-        docs_to_load.append(ARCHITECTURE_DOCS["architecture"])
-        docs_to_load.append(ARCHITECTURE_DOCS["standards"])
-    else:
-        # General — include project overview and architecture
-        docs_to_load.append(ARCHITECTURE_DOCS["project"])
-        docs_to_load.append(ARCHITECTURE_DOCS["architecture"])
-
-    sections: list[str] = []
-
-    for key in docs_to_load:
-        try:
-            content = s3.download_text(key)
-            sections.append(content)
-        except Exception as ex:
-            logger.warning(
-                "Architecture doc not found, skipping",
-                key=key,
-                error=str(ex),
-            )
-
-    if sections:
-        logger.info(
-            "Architecture knowledge loaded (selective)",
-            documents_loaded=len(sections),
-            ticket_type=ticket_type,
-            docs=docs_to_load,
-        )
-    else:
-        logger.warning("No architecture knowledge available in S3")
-
-    return "\n\n".join(sections)
+    return generated_files
 
 
 # ---------------------------------------------------------------------------
@@ -653,6 +206,22 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     ticket_id = event["ticketId"]
     planning = event["planning"]
 
+    # Extract implementation contract
+    contract = planning.get("implementationContract", {})
+    contract_files = contract.get("files", [])
+    protected_files = contract.get("protectedFiles", [])
+    validation_checklist = contract.get("validationChecklist", [])
+
+    if not contract_files:
+        logger.warning(
+            "No files in implementationContract, nothing to implement",
+            workflow_id=workflow_id,
+        )
+        event["status"] = "DEVELOPMENT_COMPLETE"
+        event["currentAgent"] = "development"
+        event["artifacts"] = {"generatedFiles": [], "skipped": True}
+        return event
+
     # Initialize services
     github = GitHubClient(
         owner=config.github_repo_owner,
@@ -663,198 +232,320 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     s3 = S3Helper(config.bucket_name)
     table = WorkflowTable(config.table_name)
 
-    # ----- Repository-aware code generation pipeline -----
-
-    # Step 1: Extract keywords from ticket
-    keywords = _extract_keywords(event)
-    logger.info("Keywords extracted", keywords=keywords)
-
-    # Step 2: Search repository and build context
-    files_to_generate = planning.get("filesToGenerate", [])
-    repo_context = _build_repository_context(
-        github=github,
-        keywords=keywords,
-        files_to_generate=files_to_generate,
-    )
-    logger.info(
-        "Repository context built",
-        candidate_count=len(repo_context["candidateFiles"]),
-        candidates=repo_context["candidateFiles"],
-    )
-
-    # Step 3: Download candidate file contents
-    existing_contents = _download_candidate_files(
-        github=github,
-        candidate_files=repo_context["candidateFiles"],
-    )
-    logger.info(
-        "Candidate files downloaded",
-        downloaded_count=len(existing_contents),
-    )
-
-    # Step 5: Load selective architecture knowledge from S3
-    architecture_knowledge = _load_architecture_knowledge(s3, keywords)
-    repo_context["architectureSummary"] = (
-        architecture_knowledge[:500] if architecture_knowledge else ""
-    )
-
-    # Step 4: AI decision step — MODIFY vs CREATE
-    ai_decisions = _decide_action_ai(
-        bedrock=bedrock,
-        event=event,
-        repo_context=repo_context,
-        architecture_summary=architecture_knowledge[:1000] if architecture_knowledge else "",
-    )
-
-    # Build a lookup from plannedFile -> decision (from AI)
-    ai_decision_map: dict[str, dict[str, Any]] = {}
-    ai_suggested_files: list[str] = []
-    if ai_decisions:
-        for d in ai_decisions:
-            planned = d.get("plannedFile", "")
-            if planned:
-                ai_decision_map[planned] = d
-                ai_suggested_files.extend(d.get("targetFiles", []))
-
-    # Step 3b: Rank candidate files to top 3 for prompts
-    ranked_files = _rank_candidate_files(
-        candidate_files=repo_context["candidateFiles"],
-        files_to_generate=files_to_generate,
-        keywords=keywords,
-        ai_target_files=ai_suggested_files,
-    )
-
-    # Build a reduced context for prompts (only top 3 files)
-    reduced_context: dict[str, Any] = dict(repo_context)
-    reduced_context["candidateFiles"] = ranked_files
-
-    # ----- END pipeline -----
-
     # Create feature branch
     branch = f"feature/{ticket_id}"
     github.ensure_branch(branch)
 
-    # Generate/modify and commit each file
-    generated_files: list[dict[str, Any]] = []
-    last_commit: dict[str, Any] | None = None
+    # ===================================================================
+    # Phase 1: Generate code for all files (with self-review)
+    # ===================================================================
+    generated_files: dict[str, str] = {}
+    file_metadata: list[dict[str, Any]] = []
+    aborted = False
+    abort_reason = ""
 
     logger.info(
-        "Processing files",
+        "Executing implementation contract",
         workflow_id=workflow_id,
-        file_count=len(files_to_generate),
+        file_count=len(contract_files),
+        protected_count=len(protected_files),
     )
 
-    for file_path in files_to_generate:
-        # Use AI decision if available, otherwise fall back to heuristic
-        if file_path in ai_decision_map:
-            decision = ai_decision_map[file_path]
-            decision_source = "ai"
-            logger.info(
-                "Using AI decision",
-                file_path=file_path,
-                action=decision["action"],
-                reason=decision.get("reason", ""),
-            )
-        else:
-            decision = _decide_action_heuristic(
-                file_path=file_path,
-                candidate_files=repo_context["candidateFiles"],
-                existing_contents=existing_contents,
-                keywords=keywords,
-            )
-            decision_source = "heuristic"
-            logger.info(
-                "Using heuristic decision (AI did not cover this file)",
-                file_path=file_path,
-                action=decision["action"],
-                reason=decision["reason"],
-            )
+    for file_entry in contract_files:
+        file_path = file_entry["path"]
+        operation = file_entry.get("operation", "MODIFY")
+        expected_hash = file_entry.get("sha256")
+        expected_changes = file_entry.get("expectedChanges", [])
 
-        # Build the appropriate prompt (with selective architecture knowledge)
-        sys_prompt = prompts.system_prompt(architecture_knowledge)
+        logger.info("Processing file", file_path=file_path, operation=operation)
 
-        if decision["action"] == "MODIFY":
-            target_file = decision["targetFiles"][0]
-            existing_code = existing_contents.get(target_file, "")
+        # ---------------------------------------------------------------
+        # Step 1: Download (MODIFY) or verify absence (CREATE)
+        # ---------------------------------------------------------------
+        existing_code: str | None = None
 
-            # If we don't have the content yet, download it
-            if not existing_code:
+        if operation == "MODIFY":
+            try:
+                existing_code = github.get_file_content(file_path, branch)
+            except Exception:
                 try:
-                    existing_code = github.get_file_content(target_file)
-                except Exception:
-                    logger.warning(
-                        "Could not download target file, falling back to CREATE",
-                        target_file=target_file,
+                    existing_code = github.get_file_content(file_path)
+                except Exception as ex:
+                    logger.error(
+                        "Cannot download file for MODIFY, aborting",
+                        file_path=file_path,
+                        error=str(ex),
                     )
-                    decision = {
-                        "action": "CREATE",
-                        "reason": f"Could not read '{target_file}', creating new.",
-                        "targetFiles": [file_path],
-                    }
-                    decision_source = "fallback"
+                    aborted = True
+                    abort_reason = f"FILE_NOT_FOUND: {file_path}"
+                    break
 
-        if decision["action"] == "MODIFY":
-            target_file = decision["targetFiles"][0]
-            existing_code = existing_contents.get(target_file, "")
+            # Step 2: Verify SHA256
+            if not _verify_sha256(existing_code, expected_hash):
+                logger.error(
+                    "SHA256 mismatch — file changed since planning",
+                    file_path=file_path,
+                    expected_hash=expected_hash,
+                )
+                aborted = True
+                abort_reason = f"FILE_CHANGED_REPLAN_REQUIRED: {file_path}"
+                break
 
+        elif operation == "CREATE":
+            if github.file_exists(file_path, branch) or github.file_exists(file_path):
+                logger.warning(
+                    "File already exists for CREATE, switching to MODIFY",
+                    file_path=file_path,
+                )
+                operation = "MODIFY"
+                try:
+                    existing_code = github.get_file_content(file_path)
+                except Exception:
+                    existing_code = None
+
+        # ---------------------------------------------------------------
+        # Step 3: Generate implementation
+        # ---------------------------------------------------------------
+        sys_prompt = prompts.system_prompt()
+
+        if operation == "MODIFY":
             user_msg = prompts.user_prompt_modify(
-                workflow=event,
-                file_path=target_file,
-                existing_content=existing_code,
-                repository_context=reduced_context,
-                reason=decision.get("reason", ""),
+                event=event,
+                file_path=file_path,
+                existing_content=existing_code or "",
+                expected_changes=expected_changes,
+                validation_checklist=validation_checklist,
             )
-            commit_path = target_file
-            commit_msg = f"feat({ticket_id}): modify {target_file}"
         else:
             user_msg = prompts.user_prompt_create(
-                workflow=event,
+                event=event,
                 file_path=file_path,
-                repository_context=reduced_context,
-                reason=decision.get("reason", ""),
+                expected_changes=expected_changes,
+                validation_checklist=validation_checklist,
             )
-            commit_path = file_path
-            commit_msg = f"feat({ticket_id}): create {file_path}"
 
-        # Call Bedrock for code generation
-        logger.info(
-            "Generating code",
-            file_path=commit_path,
-            action=decision["action"],
-            decision_source=decision_source,
-        )
-        code = bedrock.converse(
+        logger.info("Generating implementation", file_path=file_path, operation=operation)
+        generated_code = bedrock.converse(
             system_prompt=sys_prompt,
             user_prompt=user_msg,
             max_tokens=8192,
         )
 
-        # Commit to GitHub
-        last_commit = github.commit_file(
-            branch=branch,
-            path=commit_path,
-            content=code,
-            message=commit_msg,
+        # ---------------------------------------------------------------
+        # Step 4: Self-review
+        # ---------------------------------------------------------------
+        review_result = _self_review(
+            bedrock=bedrock,
+            event=event,
+            file_entry=file_entry,
+            generated_code=generated_code,
+            existing_code=existing_code,
+            protected_files=protected_files,
         )
 
-        generated_files.append(
+        if review_result != "PASS":
+            logger.warning(
+                "Self-review FAILED, attempting regeneration",
+                file_path=file_path,
+                review_result=review_result,
+            )
+
+            # One retry for self-review
+            generated_code = bedrock.converse(
+                system_prompt=sys_prompt,
+                user_prompt=user_msg,
+                max_tokens=8192,
+            )
+
+            review_result = _self_review(
+                bedrock=bedrock,
+                event=event,
+                file_entry=file_entry,
+                generated_code=generated_code,
+                existing_code=existing_code,
+                protected_files=protected_files,
+            )
+
+            if review_result != "PASS":
+                logger.error(
+                    "Self-review FAILED after retry, aborting file",
+                    file_path=file_path,
+                    review_result=review_result,
+                )
+                file_metadata.append(
+                    {
+                        "path": file_path,
+                        "operation": operation,
+                        "status": "REVIEW_FAILED",
+                        "reason": review_result,
+                    }
+                )
+                continue
+
+        # Store generated code for build verification
+        generated_files[file_path] = generated_code
+        file_metadata.append(
             {
-                "path": commit_path,
-                "size": len(code),
-                "action": decision["action"],
-                "reason": decision.get("reason", ""),
-                "decisionSource": decision_source,
+                "path": file_path,
+                "operation": operation,
+                "status": "GENERATED",
+                "size": len(generated_code),
+                "review": "PASS",
             }
         )
 
-    # Create or reuse Pull Request
+    # ===================================================================
+    # Handle abort (SHA256 mismatch, file not found, etc.)
+    # ===================================================================
+    if aborted:
+        logger.error("Implementation aborted", workflow_id=workflow_id, reason=abort_reason)
+
+        table.update_status(
+            workflow_id=workflow_id,
+            status="DEVELOPMENT_ABORTED",
+            agent="development",
+            artifacts={"reason": abort_reason, "generatedFiles": file_metadata},
+        )
+
+        event["status"] = "DEVELOPMENT_ABORTED"
+        event["currentAgent"] = "development"
+        event["artifacts"] = {"reason": abort_reason, "generatedFiles": file_metadata}
+        return event
+
+    # If no files were generated successfully, abort
+    if not generated_files:
+        logger.error("No files generated successfully", workflow_id=workflow_id)
+
+        table.update_status(
+            workflow_id=workflow_id,
+            status="DEVELOPMENT_ABORTED",
+            agent="development",
+            artifacts={"reason": "NO_FILES_GENERATED", "generatedFiles": file_metadata},
+        )
+
+        event["status"] = "DEVELOPMENT_ABORTED"
+        event["currentAgent"] = "development"
+        event["artifacts"] = {"reason": "NO_FILES_GENERATED", "generatedFiles": file_metadata}
+        return event
+
+    # ===================================================================
+    # Phase 2: Build verification
+    # ===================================================================
+    logger.info("Build started", file_count=len(generated_files))
+
+    build_result = _run_build_verification(
+        config=config,
+        github=github,
+        branch=branch,
+        generated_files=generated_files,
+    )
+
+    build_status = build_result["status"]
+    logger.info(
+        "Build completed",
+        status=build_status,
+        duration=build_result.get("duration"),
+    )
+
+    # If build failed, retry with build error context
+    if build_status == "FAILED":
+        logger.warning("Build failed, attempting retry with error context")
+        logger.info("Retry started")
+
+        generated_files = _regenerate_with_build_fix(
+            bedrock=bedrock,
+            event=event,
+            file_entries=contract_files,
+            generated_files=generated_files,
+            build_logs=build_result.get("logs", ""),
+        )
+
+        # Run build again
+        logger.info("Build started (retry)")
+        build_result = _run_build_verification(
+            config=config,
+            github=github,
+            branch=branch,
+            generated_files=generated_files,
+        )
+
+        build_status = build_result["status"]
+
+        if build_status == "FAILED":
+            logger.error(
+                "Retry failed — build still broken, aborting",
+                logs=build_result.get("logs", "")[:500],
+            )
+
+            table.update_status(
+                workflow_id=workflow_id,
+                status="BUILD_FAILED",
+                agent="development",
+                artifacts={
+                    "reason": "BUILD_FAILED",
+                    "buildLogs": build_result.get("logs", "")[:2000],
+                    "generatedFiles": file_metadata,
+                },
+            )
+
+            event["status"] = "BUILD_FAILED"
+            event["currentAgent"] = "development"
+            event["artifacts"] = {
+                "reason": "BUILD_FAILED",
+                "buildLogs": build_result.get("logs", "")[:2000],
+                "generatedFiles": file_metadata,
+            }
+            return event
+
+        logger.info("Retry succeeded — build passes")
+
+    elif build_status == "BUILD_NOT_SUPPORTED":
+        logger.info("Build not supported for this project type, proceeding")
+
+    # ===================================================================
+    # Phase 3: Commit all files to GitHub
+    # ===================================================================
+    logger.info("Committing files", file_count=len(generated_files))
+
+    last_commit: dict[str, Any] | None = None
+    committed_files: list[dict[str, Any]] = []
+
+    for file_entry in contract_files:
+        file_path = file_entry["path"]
+        operation = file_entry.get("operation", "MODIFY")
+
+        if file_path not in generated_files:
+            continue
+
+        commit_msg = f"feat({ticket_id}): {operation.lower()} {file_path}"
+        last_commit = github.commit_file(
+            branch=branch,
+            path=file_path,
+            content=generated_files[file_path],
+            message=commit_msg,
+        )
+
+        committed_files.append(
+            {
+                "path": file_path,
+                "operation": operation,
+                "status": "SUCCESS",
+                "size": len(generated_files[file_path]),
+            }
+        )
+
+        logger.info("File committed", file_path=file_path, operation=operation)
+
+    # ===================================================================
+    # Phase 4: Create Pull Request
+    # ===================================================================
     pr = github.ensure_pull_request(
         branch=branch,
         ticket_id=ticket_id,
         workflow_id=workflow_id,
     )
 
-    # Build artifacts summary
+    # Build artifacts
     artifacts = event.get("artifacts", {})
     artifacts.update(
         {
@@ -863,26 +554,23 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "commitSha": last_commit["commit"]["sha"] if last_commit else "",
             "pullRequest": pr["url"],
             "pullRequestNumber": pr["number"],
-            "generatedFiles": generated_files,
-            "repositoryContext": {
-                "candidateFiles": repo_context["candidateFiles"],
-                "rankedFiles": ranked_files,
-                "framework": repo_context["framework"],
+            "generatedFiles": committed_files,
+            "buildVerification": {
+                "status": build_status,
+                "duration": build_result.get("duration"),
             },
         }
     )
 
-    # Store code generation artifact in S3
+    # Store artifact in S3
     s3.upload_json(
         f"artifacts/{workflow_id}-generated-code.json",
         {
-            "files": generated_files,
+            "files": committed_files,
             "branch": branch,
             "pullRequest": pr["url"],
-            "repositoryContext": repo_context,
-            "rankedFiles": ranked_files,
-            "keywords": keywords,
-            "aiDecisions": ai_decisions,
+            "contract": contract,
+            "buildVerification": build_result,
         },
     )
 
@@ -902,7 +590,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info(
         "Development complete",
         workflow_id=workflow_id,
-        files_processed=len(generated_files),
+        files_committed=len(committed_files),
+        build_status=build_status,
         pr_url=pr["url"],
     )
 
