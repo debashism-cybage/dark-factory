@@ -157,9 +157,8 @@ def _build_repository_context(
 
     # Also check if any of the planned files already exist
     for file_path in files_to_generate:
-        if file_path not in candidate_files:
-            if github.file_exists(file_path, branch):
-                candidate_files.append(file_path)
+        if file_path not in candidate_files and github.file_exists(file_path, branch):
+            candidate_files.append(file_path)
 
     # Categorize files by type
     components: list[str] = []
