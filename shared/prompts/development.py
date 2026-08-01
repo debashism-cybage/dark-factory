@@ -195,7 +195,6 @@ def review_user_prompt(
     """
     original_section = ""
     if existing_code:
-        # Show a truncated version to keep context manageable
         truncated = existing_code[:4000] if len(existing_code) > 4000 else existing_code
         original_section = f"""
 --------------------------------------------------
@@ -232,80 +231,3 @@ VERIFY
 4. Were ONLY the expected changes made?
 
 Respond with ONLY: PASS or FAIL (with brief reason if FAIL)."""
-
-
-# ---------------------------------------------------------------------------
-# Build-fix prompts (retry after build failure)
-# ---------------------------------------------------------------------------
-
-
-def build_fix_system_prompt() -> str:
-    """System prompt for fixing build errors."""
-    return (
-        "You are a senior software engineer fixing a build error.\n\n"
-        "RULES:\n"
-        "1. Fix ONLY the build error. Nothing else.\n"
-        "2. Do NOT refactor, simplify, or improve unrelated code.\n"
-        "3. Do NOT change formatting of lines not related to the fix.\n"
-        "4. Preserve all comments, imports, and business logic.\n"
-        "5. Return ONLY the complete file contents.\n"
-        "6. Do not wrap in markdown. Do not use code fences.\n"
-        "7. Do not explain the fix.\n"
-    )
-
-
-def build_fix_user_prompt(
-    event: dict[str, Any],
-    file_path: str,
-    current_content: str,
-    build_logs: str,
-    expected_changes: list[str],
-) -> str:
-    """
-    Build the user prompt for fixing build errors in generated code.
-
-    Args:
-        event: Workflow event with ticket info.
-        file_path: The file that caused the build failure.
-        current_content: The generated code that failed to build.
-        build_logs: Build output with error messages.
-        expected_changes: The original expected changes from the contract.
-    """
-    return f"""Fix the build error in this file.
-
-File: {file_path}
-Ticket: {event.get("ticketId", "")}
-Summary: {event.get("summary", "")}
-
---------------------------------------------------
-CURRENT FILE (has build errors)
---------------------------------------------------
-
-{current_content}
-
---------------------------------------------------
-BUILD ERROR OUTPUT
---------------------------------------------------
-
-{build_logs[-3000:]}
-
---------------------------------------------------
-ORIGINAL REQUIREMENTS
---------------------------------------------------
-
-The file was modified to implement these changes:
-{json.dumps(expected_changes, indent=2)}
-
---------------------------------------------------
-RULES
---------------------------------------------------
-
-1. Fix ONLY the build error shown above.
-2. Keep the intended changes from ORIGINAL REQUIREMENTS intact.
-3. Do NOT revert the intended changes.
-4. Do NOT refactor or improve unrelated code.
-5. Do NOT change lines that are not related to the build error.
-6. Return the COMPLETE fixed file contents.
-
-Return ONLY the complete fixed file contents.
-Do not wrap in markdown. Do not use ``` fences. Do not explain."""

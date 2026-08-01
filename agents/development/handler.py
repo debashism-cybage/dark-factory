@@ -11,21 +11,20 @@ Execution flow:
    b. Verify SHA256 matches the Planning Agent's hash.
    c. Generate the smallest safe change via Bedrock.
    d. Self-review: verify the change satisfies the ticket.
-2. Run build verification (clone, apply all changes, build).
-   - If build fails, retry code generation with build error context.
-   - If build still fails, abort — no commit, no PR.
-3. Commit all files to GitHub.
-4. Create Pull Request.
+   e. Commit to GitHub.
+2. Create Pull Request.
+
+Build verification is handled by GitHub Actions (npm install, npm run build)
+after the PR is created. The Validation Agent consumes that result.
 
 Input: Workflow event with 'planning.implementationContract' (from Planning Agent).
-Output: Workflow event enriched with 'artifacts' and status.
+Output: Workflow event enriched with 'artifacts' and status 'DEVELOPMENT_COMPLETE'.
 """
 
 from hashlib import sha256
 from typing import Any
 
 from shared.bedrock_client import BedrockClient
-from shared.build_verifier import BuildVerifier
 from shared.config import DevelopmentConfig
 from shared.dynamodb_helper import WorkflowTable
 from shared.github_client import GitHubClient
@@ -102,96 +101,6 @@ def _self_review(
 
 
 # ---------------------------------------------------------------------------
-# Build verification
-# ---------------------------------------------------------------------------
-
-
-def _run_build_verification(
-    config: DevelopmentConfig,
-    github: GitHubClient,
-    branch: str,
-    generated_files: dict[str, str],
-) -> dict[str, Any]:
-    """
-    Clone the repository, apply changes, and run the build.
-
-    Args:
-        config: DevelopmentConfig with repo info.
-        github: GitHubClient (for token access).
-        branch: Feature branch name.
-        generated_files: Dict of file_path -> generated content.
-
-    Returns:
-        Build result dict: {status, duration, logs}.
-    """
-    repo_url = f"https://github.com/{config.github_repo_owner}/{config.github_repo_name}.git"
-
-    verifier = BuildVerifier(
-        repo_url=repo_url,
-        branch=branch,
-        token=github.token,
-    )
-
-    return verifier.verify(generated_files)
-
-
-# ---------------------------------------------------------------------------
-# Build-fix retry
-# ---------------------------------------------------------------------------
-
-
-def _regenerate_with_build_fix(
-    bedrock: BedrockClient,
-    event: dict[str, Any],
-    file_entries: list[dict[str, Any]],
-    generated_files: dict[str, str],
-    build_logs: str,
-) -> dict[str, str]:
-    """
-    Regenerate code for files that caused build errors.
-
-    Uses the build error output to guide the LLM fix.
-
-    Args:
-        bedrock: Initialized BedrockClient.
-        event: Workflow event.
-        file_entries: File entries from implementationContract.
-        generated_files: Current generated code (path -> content).
-        build_logs: Build error output.
-
-    Returns:
-        Updated generated_files dict with fixes applied.
-    """
-    logger.info("Retry started — regenerating code with build error context")
-
-    for file_entry in file_entries:
-        file_path = file_entry["path"]
-        current_content = generated_files.get(file_path)
-
-        if not current_content:
-            continue
-
-        expected_changes = file_entry.get("expectedChanges", [])
-
-        fixed_code = bedrock.converse(
-            system_prompt=prompts.build_fix_system_prompt(),
-            user_prompt=prompts.build_fix_user_prompt(
-                event=event,
-                file_path=file_path,
-                current_content=current_content,
-                build_logs=build_logs,
-                expected_changes=expected_changes,
-            ),
-            max_tokens=8192,
-        )
-
-        generated_files[file_path] = fixed_code
-        logger.info("File regenerated with build fix", file_path=file_path)
-
-    return generated_files
-
-
-# ---------------------------------------------------------------------------
 # Main handler
 # ---------------------------------------------------------------------------
 
@@ -236,11 +145,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     branch = f"feature/{ticket_id}"
     github.ensure_branch(branch)
 
-    # ===================================================================
-    # Phase 1: Generate code for all files (with self-review)
-    # ===================================================================
-    generated_files: dict[str, str] = {}
-    file_metadata: list[dict[str, Any]] = []
+    # Execute each file in the contract
+    generated_files: list[dict[str, Any]] = []
+    last_commit: dict[str, Any] | None = None
     aborted = False
     abort_reason = ""
 
@@ -260,7 +167,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Processing file", file_path=file_path, operation=operation)
 
         # ---------------------------------------------------------------
-        # Step 1: Download (MODIFY) or verify absence (CREATE)
+        # Step 1: Download current file (MODIFY) or verify absence (CREATE)
         # ---------------------------------------------------------------
         existing_code: str | None = None
 
@@ -280,7 +187,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     abort_reason = f"FILE_NOT_FOUND: {file_path}"
                     break
 
+            # ---------------------------------------------------------------
             # Step 2: Verify SHA256
+            # ---------------------------------------------------------------
             if not _verify_sha256(existing_code, expected_hash):
                 logger.error(
                     "SHA256 mismatch — file changed since planning",
@@ -350,7 +259,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 review_result=review_result,
             )
 
-            # One retry for self-review
+            # One retry
             generated_code = bedrock.converse(
                 system_prompt=sys_prompt,
                 user_prompt=user_msg,
@@ -368,11 +277,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
             if review_result != "PASS":
                 logger.error(
-                    "Self-review FAILED after retry, aborting file",
+                    "Self-review FAILED after retry, skipping file",
                     file_path=file_path,
                     review_result=review_result,
                 )
-                file_metadata.append(
+                generated_files.append(
                     {
                         "path": file_path,
                         "operation": operation,
@@ -382,21 +291,32 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 )
                 continue
 
-        # Store generated code for build verification
-        generated_files[file_path] = generated_code
-        file_metadata.append(
+        # ---------------------------------------------------------------
+        # Step 5: Commit to GitHub
+        # ---------------------------------------------------------------
+        commit_msg = f"feat({ticket_id}): {operation.lower()} {file_path}"
+        last_commit = github.commit_file(
+            branch=branch,
+            path=file_path,
+            content=generated_code,
+            message=commit_msg,
+        )
+
+        generated_files.append(
             {
                 "path": file_path,
                 "operation": operation,
-                "status": "GENERATED",
+                "status": "SUCCESS",
                 "size": len(generated_code),
                 "review": "PASS",
             }
         )
 
-    # ===================================================================
-    # Handle abort (SHA256 mismatch, file not found, etc.)
-    # ===================================================================
+        logger.info("File committed", file_path=file_path, operation=operation)
+
+    # -----------------------------------------------------------------------
+    # Handle abort
+    # -----------------------------------------------------------------------
     if aborted:
         logger.error("Implementation aborted", workflow_id=workflow_id, reason=abort_reason)
 
@@ -404,141 +324,17 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             workflow_id=workflow_id,
             status="DEVELOPMENT_ABORTED",
             agent="development",
-            artifacts={"reason": abort_reason, "generatedFiles": file_metadata},
+            artifacts={"reason": abort_reason, "generatedFiles": generated_files},
         )
 
         event["status"] = "DEVELOPMENT_ABORTED"
         event["currentAgent"] = "development"
-        event["artifacts"] = {"reason": abort_reason, "generatedFiles": file_metadata}
+        event["artifacts"] = {"reason": abort_reason, "generatedFiles": generated_files}
         return event
 
-    # If no files were generated successfully, abort
-    if not generated_files:
-        logger.error("No files generated successfully", workflow_id=workflow_id)
-
-        table.update_status(
-            workflow_id=workflow_id,
-            status="DEVELOPMENT_ABORTED",
-            agent="development",
-            artifacts={"reason": "NO_FILES_GENERATED", "generatedFiles": file_metadata},
-        )
-
-        event["status"] = "DEVELOPMENT_ABORTED"
-        event["currentAgent"] = "development"
-        event["artifacts"] = {"reason": "NO_FILES_GENERATED", "generatedFiles": file_metadata}
-        return event
-
-    # ===================================================================
-    # Phase 2: Build verification
-    # ===================================================================
-    logger.info("Build started", file_count=len(generated_files))
-
-    build_result = _run_build_verification(
-        config=config,
-        github=github,
-        branch=branch,
-        generated_files=generated_files,
-    )
-
-    build_status = build_result["status"]
-    logger.info(
-        "Build completed",
-        status=build_status,
-        duration=build_result.get("duration"),
-    )
-
-    # If build failed, retry with build error context
-    if build_status == "FAILED":
-        logger.warning("Build failed, attempting retry with error context")
-        logger.info("Retry started")
-
-        generated_files = _regenerate_with_build_fix(
-            bedrock=bedrock,
-            event=event,
-            file_entries=contract_files,
-            generated_files=generated_files,
-            build_logs=build_result.get("logs", ""),
-        )
-
-        # Run build again
-        logger.info("Build started (retry)")
-        build_result = _run_build_verification(
-            config=config,
-            github=github,
-            branch=branch,
-            generated_files=generated_files,
-        )
-
-        build_status = build_result["status"]
-
-        if build_status == "FAILED":
-            logger.error(
-                "Retry failed — build still broken, aborting",
-                logs=build_result.get("logs", "")[:500],
-            )
-
-            table.update_status(
-                workflow_id=workflow_id,
-                status="BUILD_FAILED",
-                agent="development",
-                artifacts={
-                    "reason": "BUILD_FAILED",
-                    "buildLogs": build_result.get("logs", "")[:2000],
-                    "generatedFiles": file_metadata,
-                },
-            )
-
-            event["status"] = "BUILD_FAILED"
-            event["currentAgent"] = "development"
-            event["artifacts"] = {
-                "reason": "BUILD_FAILED",
-                "buildLogs": build_result.get("logs", "")[:2000],
-                "generatedFiles": file_metadata,
-            }
-            return event
-
-        logger.info("Retry succeeded — build passes")
-
-    elif build_status == "BUILD_NOT_SUPPORTED":
-        logger.info("Build not supported for this project type, proceeding")
-
-    # ===================================================================
-    # Phase 3: Commit all files to GitHub
-    # ===================================================================
-    logger.info("Committing files", file_count=len(generated_files))
-
-    last_commit: dict[str, Any] | None = None
-    committed_files: list[dict[str, Any]] = []
-
-    for file_entry in contract_files:
-        file_path = file_entry["path"]
-        operation = file_entry.get("operation", "MODIFY")
-
-        if file_path not in generated_files:
-            continue
-
-        commit_msg = f"feat({ticket_id}): {operation.lower()} {file_path}"
-        last_commit = github.commit_file(
-            branch=branch,
-            path=file_path,
-            content=generated_files[file_path],
-            message=commit_msg,
-        )
-
-        committed_files.append(
-            {
-                "path": file_path,
-                "operation": operation,
-                "status": "SUCCESS",
-                "size": len(generated_files[file_path]),
-            }
-        )
-
-        logger.info("File committed", file_path=file_path, operation=operation)
-
-    # ===================================================================
-    # Phase 4: Create Pull Request
-    # ===================================================================
+    # -----------------------------------------------------------------------
+    # Create Pull Request
+    # -----------------------------------------------------------------------
     pr = github.ensure_pull_request(
         branch=branch,
         ticket_id=ticket_id,
@@ -554,11 +350,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "commitSha": last_commit["commit"]["sha"] if last_commit else "",
             "pullRequest": pr["url"],
             "pullRequestNumber": pr["number"],
-            "generatedFiles": committed_files,
-            "buildVerification": {
-                "status": build_status,
-                "duration": build_result.get("duration"),
-            },
+            "generatedFiles": generated_files,
         }
     )
 
@@ -566,11 +358,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     s3.upload_json(
         f"artifacts/{workflow_id}-generated-code.json",
         {
-            "files": committed_files,
+            "files": generated_files,
             "branch": branch,
             "pullRequest": pr["url"],
             "contract": contract,
-            "buildVerification": build_result,
         },
     )
 
@@ -590,8 +381,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info(
         "Development complete",
         workflow_id=workflow_id,
-        files_committed=len(committed_files),
-        build_status=build_status,
+        files_committed=len(generated_files),
         pr_url=pr["url"],
     )
 
