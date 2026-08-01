@@ -215,8 +215,10 @@ class BuildVerifier:
         if not self.work_dir:
             return
 
+        work_dir = self.work_dir
+
         for file_path, content in generated_files.items():
-            full_path = os.path.join(self.work_dir, file_path)
+            full_path = os.path.join(work_dir, file_path)
 
             # Create parent directories if needed
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -240,8 +242,10 @@ class BuildVerifier:
         if not self.work_dir:
             return []
 
+        work_dir = self.work_dir
+
         # Check for package.json first (most common)
-        package_json_path = os.path.join(self.work_dir, "package.json")
+        package_json_path = os.path.join(work_dir, "package.json")
         if os.path.exists(package_json_path):
             return self._detect_node_build(package_json_path)
 
@@ -251,7 +255,7 @@ class BuildVerifier:
                 continue  # Already handled above
 
             for detect_file in config["detect"]:
-                if os.path.exists(os.path.join(self.work_dir, detect_file)):
+                if os.path.exists(os.path.join(work_dir, detect_file)):
                     logger.info("Project type detected", project_type=config_name)
                     return config["commands"]
 
@@ -267,6 +271,8 @@ class BuildVerifier:
         Returns:
             List of commands to run.
         """
+        work_dir = self.work_dir or ""
+
         try:
             with open(package_json_path, encoding="utf-8") as f:
                 pkg = json.loads(f.read())
@@ -277,15 +283,15 @@ class BuildVerifier:
 
         # Detect package manager
         install_cmd = "npm ci"
-        if os.path.exists(os.path.join(self.work_dir, "yarn.lock")):
+        if os.path.exists(os.path.join(work_dir, "yarn.lock")):
             install_cmd = "yarn install --frozen-lockfile"
-        elif os.path.exists(os.path.join(self.work_dir, "pnpm-lock.yaml")):
+        elif os.path.exists(os.path.join(work_dir, "pnpm-lock.yaml")):
             install_cmd = "pnpm install --frozen-lockfile"
 
         commands = [install_cmd]
 
         # Detect Angular
-        if os.path.exists(os.path.join(self.work_dir, "angular.json")):
+        if os.path.exists(os.path.join(work_dir, "angular.json")):
             logger.info("Project type detected", project_type="angular")
             if "build" in scripts:
                 commands.append("npm run build")
