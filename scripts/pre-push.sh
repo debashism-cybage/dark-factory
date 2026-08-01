@@ -4,6 +4,11 @@
 
 set -e
 
+# Add Python user scripts to PATH (where ruff, mypy, pytest are installed)
+export PATH="$APPDATA/Python/Python314/Scripts:$PATH"
+export PATH="/c/Python314/Scripts:$PATH"
+export PATH="/c/Python314:$PATH"
+
 echo "=== Pre-push verification ==="
 echo ""
 
