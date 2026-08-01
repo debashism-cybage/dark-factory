@@ -79,7 +79,7 @@ class BuildVerifier:
         self.repo_url = repo_url
         self.branch = branch
         self.token = token
-        self.work_dir: str | None = None
+        self.work_dir: str = ""
 
     def verify(
         self,
@@ -215,10 +215,8 @@ class BuildVerifier:
         if not self.work_dir:
             return
 
-        work_dir = self.work_dir
-
         for file_path, content in generated_files.items():
-            full_path = os.path.join(work_dir, file_path)
+            full_path = os.path.join(self.work_dir, file_path)
 
             # Create parent directories if needed
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -242,10 +240,8 @@ class BuildVerifier:
         if not self.work_dir:
             return []
 
-        work_dir = self.work_dir
-
         # Check for package.json first (most common)
-        package_json_path = os.path.join(work_dir, "package.json")
+        package_json_path = os.path.join(self.work_dir, "package.json")
         if os.path.exists(package_json_path):
             return self._detect_node_build(package_json_path)
 
@@ -255,7 +251,7 @@ class BuildVerifier:
                 continue  # Already handled above
 
             for detect_file in config["detect"]:
-                if os.path.exists(os.path.join(work_dir, detect_file)):
+                if os.path.exists(os.path.join(self.work_dir, detect_file)):
                     logger.info("Project type detected", project_type=config_name)
                     return config["commands"]
 
@@ -271,7 +267,7 @@ class BuildVerifier:
         Returns:
             List of commands to run.
         """
-        work_dir = self.work_dir or ""
+        work_dir = self.work_dir
 
         try:
             with open(package_json_path, encoding="utf-8") as f:
