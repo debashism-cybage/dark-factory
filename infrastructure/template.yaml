@@ -107,6 +107,31 @@ Resources:
             Method: POST
             RestApiId: !Ref DarkFactoryApi
 
+  DashboardApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-dashboard-api-${Environment}
+      CodeUri: ./dashboard_api/
+      Handler: handler.lambda_handler
+      Timeout: 60
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref WorkflowStateMachine
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:ListExecutions
+                - states:DescribeExecution
+              Resource: !Ref WorkflowStateMachine
+      Events:
+        DashboardApi:
+          Type: Api
+          Properties:
+            Path: /dashboard
+            Method: GET
+            RestApiId: !Ref DarkFactoryApi
+
   PlanningAgentFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -242,7 +267,7 @@ Resources:
       Name: !Sub dark-factory-api-${Environment}
       StageName: !Ref Environment
       Cors:
-        AllowMethods: "'POST,OPTIONS'"
+        AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
 
@@ -276,10 +301,14 @@ Resources:
 # Outputs
 # ---------------------------------------------------------------------------
 Outputs:
-  ApiEndpoint:
-    Description: API Gateway endpoint URL
+  WorkflowApiEndpoint:
+    Description: Workflow API endpoint
     Value: !Sub https://${DarkFactoryApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/workflow
 
+  DashboardApiEndpoint:
+    Description: Dashboard API endpoint
+    Value: !Sub https://${DarkFactoryApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/dashboard
+  
   StateMachineArn:
     Description: Step Functions state machine ARN
     Value: !Ref WorkflowStateMachine

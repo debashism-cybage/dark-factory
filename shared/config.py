@@ -95,3 +95,10 @@ class ReleaseConfig(BaseConfig):
 
     table_name: str = field(default_factory=lambda: _require("TABLE_NAME"))
     bucket_name: str = field(default_factory=lambda: _require("BUCKET_NAME"))
+
+
+@dataclass(frozen=True)
+class DashboardApiConfig(BaseConfig):
+    """Configuration for Dashboard API."""
+
+    state_machine_arn: str = field(default_factory=lambda: _require("STATE_MACHINE_ARN"))
