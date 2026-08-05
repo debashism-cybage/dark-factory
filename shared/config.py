@@ -45,6 +45,8 @@ class WorkflowStarterConfig(BaseConfig):
     """Configuration for the workflow-starter Lambda."""
 
     state_machine_arn: str = field(default_factory=lambda: _require("STATE_MACHINE_ARN"))
+
+
 @dataclass(frozen=True)
 class PlanningConfig(BaseConfig):
     """Configuration for the planning agent."""
@@ -103,4 +105,3 @@ class DashboardApiConfig(BaseConfig):
     """Configuration for Dashboard API."""
 
     state_machine_arn: str = field(default_factory=lambda: _require("STATE_MACHINE_ARN"))
-
