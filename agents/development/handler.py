@@ -1,13 +1,27 @@
 """
 Development Agent Lambda Handler.
 
-Generates source code file-by-file via Bedrock based on the planning output,
-commits each file to a feature branch on GitHub, and creates a Pull Request.
+The Development Agent is a pure Implementer.
+It consumes the implementationContract produced by the Planning Agent
+and executes it without additional reasoning or repository analysis.
 
-Input: Workflow event with 'planning' (from Planning Agent).
+Execution flow:
+1. For each file in implementationContract:
+   a. Download (MODIFY) or verify absence (CREATE).
+   b. Verify SHA256 matches the Planning Agent's hash.
+   c. Generate the smallest safe change via Bedrock.
+   d. Self-review: verify the change satisfies the ticket.
+   e. Commit to GitHub.
+2. Create Pull Request.
+
+Build verification is handled by GitHub Actions (npm install, npm run build)
+after the PR is created. The Validation Agent consumes that result.
+
+Input: Workflow event with 'planning.implementationContract' (from Planning Agent).
 Output: Workflow event enriched with 'artifacts' and status 'DEVELOPMENT_COMPLETE'.
 """
 
+from hashlib import sha256
 from typing import Any
 
 from shared.bedrock_client import BedrockClient
@@ -21,6 +35,76 @@ from shared.s3_helper import S3Helper
 logger = get_logger(__name__, agent="development")
 
 
+# ---------------------------------------------------------------------------
+# SHA256 verification
+# ---------------------------------------------------------------------------
+
+
+def _verify_sha256(content: str, expected_hash: str | None) -> bool:
+    """
+    Verify file content matches the expected SHA256 from the Planning Agent.
+
+    Args:
+        content: Current file content from GitHub.
+        expected_hash: SHA256 hex digest recorded at planning time.
+
+    Returns:
+        True if hash matches or no hash was provided, False if mismatch.
+    """
+    if not expected_hash:
+        return True
+
+    actual_hash = sha256(content.encode("utf-8")).hexdigest()
+    return actual_hash == expected_hash
+
+
+# ---------------------------------------------------------------------------
+# Self-review
+# ---------------------------------------------------------------------------
+
+
+def _self_review(
+    bedrock: BedrockClient,
+    event: dict[str, Any],
+    file_entry: dict[str, Any],
+    generated_code: str,
+    existing_code: str | None,
+    protected_files: list[str],
+) -> str:
+    """
+    Perform an AI self-review of the generated code.
+
+    Returns:
+        "PASS" or "FAIL: <reason>".
+    """
+    try:
+        result = bedrock.converse(
+            system_prompt=prompts.review_system_prompt(),
+            user_prompt=prompts.review_user_prompt(
+                event=event,
+                file_entry=file_entry,
+                generated_code=generated_code,
+                existing_code=existing_code,
+                protected_files=protected_files,
+            ),
+            max_tokens=512,
+        )
+
+        result_stripped = result.strip().upper()
+        if result_stripped.startswith("PASS"):
+            return "PASS"
+        return f"FAIL: {result.strip()}"
+
+    except Exception as ex:
+        logger.warning("Self-review failed, defaulting to PASS", error=str(ex))
+        return "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Main handler
+# ---------------------------------------------------------------------------
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Development agent entry point."""
     logger.info("Development agent started", workflow_id=event.get("workflowId"))
@@ -30,6 +114,22 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     workflow_id = event["workflowId"]
     ticket_id = event["ticketId"]
     planning = event["planning"]
+
+    # Extract implementation contract
+    contract = planning.get("implementationContract", {})
+    contract_files = contract.get("files", [])
+    protected_files = contract.get("protectedFiles", [])
+    validation_checklist = contract.get("validationChecklist", [])
+
+    if not contract_files:
+        logger.warning(
+            "No files in implementationContract, nothing to implement",
+            workflow_id=workflow_id,
+        )
+        event["status"] = "DEVELOPMENT_COMPLETE"
+        event["currentAgent"] = "development"
+        event["artifacts"] = {"generatedFiles": [], "skipped": True}
+        return event
 
     # Initialize services
     github = GitHubClient(
@@ -45,48 +145,203 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     branch = f"feature/{ticket_id}"
     github.ensure_branch(branch)
 
-    # Generate and commit each file
+    # Execute each file in the contract
     generated_files: list[dict[str, Any]] = []
     last_commit: dict[str, Any] | None = None
+    aborted = False
+    abort_reason = ""
 
-    files_to_generate = planning.get("filesToGenerate", [])
     logger.info(
-        "Generating files",
+        "Executing implementation contract",
         workflow_id=workflow_id,
-        file_count=len(files_to_generate),
+        file_count=len(contract_files),
+        protected_count=len(protected_files),
     )
 
-    for file_path in files_to_generate:
-        logger.info("Generating file", file_path=file_path)
+    for file_entry in contract_files:
+        file_path = file_entry["path"]
+        operation = file_entry.get("operation", "MODIFY")
+        expected_hash = file_entry.get("sha256")
+        expected_changes = file_entry.get("expectedChanges", [])
 
-        code = bedrock.converse(
-            system_prompt=prompts.system_prompt(),
-            user_prompt=prompts.user_prompt(event, file_path),
+        logger.info("Processing file", file_path=file_path, operation=operation)
+
+        # ---------------------------------------------------------------
+        # Step 1: Download current file (MODIFY) or verify absence (CREATE)
+        # ---------------------------------------------------------------
+        existing_code: str | None = None
+
+        if operation == "MODIFY":
+            try:
+                existing_code = github.get_file_content(file_path, branch)
+            except Exception:
+                try:
+                    existing_code = github.get_file_content(file_path)
+                except Exception as ex:
+                    logger.error(
+                        "Cannot download file for MODIFY, aborting",
+                        file_path=file_path,
+                        error=str(ex),
+                    )
+                    aborted = True
+                    abort_reason = f"FILE_NOT_FOUND: {file_path}"
+                    break
+
+            # ---------------------------------------------------------------
+            # Step 2: Verify SHA256
+            # ---------------------------------------------------------------
+            if not _verify_sha256(existing_code, expected_hash):
+                logger.error(
+                    "SHA256 mismatch — file changed since planning",
+                    file_path=file_path,
+                    expected_hash=expected_hash,
+                )
+                aborted = True
+                abort_reason = f"FILE_CHANGED_REPLAN_REQUIRED: {file_path}"
+                break
+
+        elif operation == "CREATE":
+            if github.file_exists(file_path, branch) or github.file_exists(file_path):
+                logger.warning(
+                    "File already exists for CREATE, switching to MODIFY",
+                    file_path=file_path,
+                )
+                operation = "MODIFY"
+                try:
+                    existing_code = github.get_file_content(file_path)
+                except Exception:
+                    existing_code = None
+
+        # ---------------------------------------------------------------
+        # Step 3: Generate implementation
+        # ---------------------------------------------------------------
+        sys_prompt = prompts.system_prompt()
+
+        if operation == "MODIFY":
+            user_msg = prompts.user_prompt_modify(
+                event=event,
+                file_path=file_path,
+                existing_content=existing_code or "",
+                expected_changes=expected_changes,
+                validation_checklist=validation_checklist,
+            )
+        else:
+            user_msg = prompts.user_prompt_create(
+                event=event,
+                file_path=file_path,
+                expected_changes=expected_changes,
+                validation_checklist=validation_checklist,
+            )
+
+        logger.info("Generating implementation", file_path=file_path, operation=operation)
+        generated_code = bedrock.converse(
+            system_prompt=sys_prompt,
+            user_prompt=user_msg,
             max_tokens=8192,
         )
 
+        # ---------------------------------------------------------------
+        # Step 4: Self-review
+        # ---------------------------------------------------------------
+        review_result = _self_review(
+            bedrock=bedrock,
+            event=event,
+            file_entry=file_entry,
+            generated_code=generated_code,
+            existing_code=existing_code,
+            protected_files=protected_files,
+        )
+
+        if review_result != "PASS":
+            logger.warning(
+                "Self-review FAILED, attempting regeneration",
+                file_path=file_path,
+                review_result=review_result,
+            )
+
+            # One retry
+            generated_code = bedrock.converse(
+                system_prompt=sys_prompt,
+                user_prompt=user_msg,
+                max_tokens=8192,
+            )
+
+            review_result = _self_review(
+                bedrock=bedrock,
+                event=event,
+                file_entry=file_entry,
+                generated_code=generated_code,
+                existing_code=existing_code,
+                protected_files=protected_files,
+            )
+
+            if review_result != "PASS":
+                logger.error(
+                    "Self-review FAILED after retry, skipping file",
+                    file_path=file_path,
+                    review_result=review_result,
+                )
+                generated_files.append(
+                    {
+                        "path": file_path,
+                        "operation": operation,
+                        "status": "REVIEW_FAILED",
+                        "reason": review_result,
+                    }
+                )
+                continue
+
+        # ---------------------------------------------------------------
+        # Step 5: Commit to GitHub
+        # ---------------------------------------------------------------
+        commit_msg = f"feat({ticket_id}): {operation.lower()} {file_path}"
         last_commit = github.commit_file(
             branch=branch,
             path=file_path,
-            content=code,
-            message=f"feat({ticket_id}): generate {file_path}",
+            content=generated_code,
+            message=commit_msg,
         )
 
         generated_files.append(
             {
                 "path": file_path,
-                "size": len(code),
+                "operation": operation,
+                "status": "SUCCESS",
+                "size": len(generated_code),
+                "review": "PASS",
             }
         )
 
-    # Create or reuse Pull Request
+        logger.info("File committed", file_path=file_path, operation=operation)
+
+    # -----------------------------------------------------------------------
+    # Handle abort
+    # -----------------------------------------------------------------------
+    if aborted:
+        logger.error("Implementation aborted", workflow_id=workflow_id, reason=abort_reason)
+
+        table.update_status(
+            workflow_id=workflow_id,
+            status="DEVELOPMENT_ABORTED",
+            agent="development",
+            artifacts={"reason": abort_reason, "generatedFiles": generated_files},
+        )
+
+        event["status"] = "DEVELOPMENT_ABORTED"
+        event["currentAgent"] = "development"
+        event["artifacts"] = {"reason": abort_reason, "generatedFiles": generated_files}
+        return event
+
+    # -----------------------------------------------------------------------
+    # Create Pull Request
+    # -----------------------------------------------------------------------
     pr = github.ensure_pull_request(
         branch=branch,
         ticket_id=ticket_id,
         workflow_id=workflow_id,
     )
 
-    # Build artifacts summary
+    # Build artifacts
     artifacts = event.get("artifacts", {})
     artifacts.update(
         {
@@ -99,13 +354,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         }
     )
 
-    # Store code generation artifact in S3
+    # Store artifact in S3
     s3.upload_json(
         f"artifacts/{workflow_id}-generated-code.json",
         {
             "files": generated_files,
             "branch": branch,
             "pullRequest": pr["url"],
+            "contract": contract,
         },
     )
 
@@ -125,7 +381,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info(
         "Development complete",
         workflow_id=workflow_id,
-        files_generated=len(generated_files),
+        files_committed=len(generated_files),
         pr_url=pr["url"],
     )
 

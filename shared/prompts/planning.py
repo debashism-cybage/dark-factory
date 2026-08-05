@@ -2,7 +2,16 @@
 Prompts for the Planning Agent.
 
 The planning agent consumes architecture knowledge and ticket information
-to produce a ticket-specific implementation plan.
+to produce a ticket-specific Engineering Contract (implementation plan).
+
+The Engineering Contract includes:
+- Traditional planning fields (summary, requirements, etc.)
+- Change classification (changeType, intent, riskLevel, estimatedScope)
+- Module analysis (candidateModules, expectedFileTypes, avoidFileTypes)
+- Safety constraints (expectedChanges, mustNotChange, validationChecklist)
+
+After the Engineering Contract, the agent searches the repository and produces
+an implementationContract with exact file paths, operations, and protections.
 """
 
 import json
@@ -10,12 +19,29 @@ from typing import Any
 
 
 def system_prompt() -> str:
-    """System prompt for the planning agent."""
+    """System prompt for the planning agent (Engineering Contract phase)."""
     return (
-        "You are a senior software architect. "
-        "You create detailed implementation plans based on project architecture "
-        "and ticket requirements. "
-        "Return only valid JSON. Do not use markdown or code fences."
+        "You are a senior software architect who produces Engineering Contracts "
+        "for development teams.\n\n"
+        "An Engineering Contract defines:\n"
+        "- WHAT should change\n"
+        "- WHAT should NOT change\n"
+        "- HOW to validate the result\n\n"
+        "You classify every ticket into one of these change types:\n"
+        "- BUG_FIX: Fixing broken behavior\n"
+        "- NEW_FEATURE: Adding entirely new functionality\n"
+        "- ENHANCEMENT: Improving existing functionality\n"
+        "- REFACTOR: Restructuring code without changing behavior\n"
+        "- CONFIGURATION: Changing config, environment, or build settings\n"
+        "- DOCUMENTATION: Updating docs, comments, or README\n\n"
+        "RULES:\n"
+        "1. Return only valid JSON. No markdown. No code fences.\n"
+        "2. Do NOT guess file paths. Use logical module names instead.\n"
+        "3. Be precise about what should and should NOT change.\n"
+        "4. For UI text changes, avoid suggesting TypeScript/logic file changes.\n"
+        "5. For backend changes, avoid suggesting template/style file changes.\n"
+        "6. Always produce a machine-readable validation checklist.\n"
+        "7. Keep the intent concise — one sentence.\n"
     )
 
 
@@ -40,20 +66,17 @@ Project Architecture (Knowledge Base)
 
 {json.dumps(architecture_knowledge, indent=2)}
 
-Use this architecture knowledge to inform your implementation plan.
+Use this architecture knowledge to inform your Engineering Contract.
 Respect existing patterns, conventions, and folder organization.
 """
 
-    return f"""Generate a detailed implementation plan for this ticket.
+    return f"""Generate an Engineering Contract for this ticket.
 
 Return ONLY a valid JSON object.
 Use EXACTLY the schema below.
 Do not add extra fields. Do not rename fields.
 Do not wrap the response in markdown.
 Populate EVERY field with meaningful content.
-
-For filesToGenerate, include all source files that should be created or modified
-with realistic filenames that respect the project's folder organization.
 
 --------------------------------------------------
 Ticket Information
@@ -78,5 +101,209 @@ Required JSON Schema
   "testCases": [],
   "affectedModules": [],
   "technologies": [],
-  "filesToGenerate": []
-}}"""
+  "filesToGenerate": [],
+
+  "changeType": "BUG_FIX | NEW_FEATURE | ENHANCEMENT | REFACTOR | CONFIGURATION | DOCUMENTATION",
+  "intent": "One concise sentence describing the engineering intent",
+  "candidateModules": ["Logical module names that may need changes, e.g. Login, Dashboard, Orders"],
+  "expectedFileTypes": ["File extensions expected to change, e.g. html, css, ts, py"],
+  "avoidFileTypes": ["File extensions that should NOT be modified for this ticket"],
+  "expectedChanges": ["Specific changes expected, e.g. Update welcome text from X to Y"],
+  "mustNotChange": ["Things that must NOT be modified, e.g. Business logic, Authentication"],
+  "validationChecklist": ["Machine-readable validation points to verify the change"],
+  "riskLevel": "LOW | MEDIUM | HIGH",
+  "estimatedScope": "SMALL | MEDIUM | LARGE"
+}}
+
+--------------------------------------------------
+Classification Guide
+--------------------------------------------------
+
+changeType:
+- BUG_FIX: Something is broken and needs fixing
+- NEW_FEATURE: Brand new functionality that does not exist yet
+- ENHANCEMENT: Improving or modifying existing functionality
+- REFACTOR: Restructuring without behavior change
+- CONFIGURATION: Config/env/build changes
+- DOCUMENTATION: Docs, comments, README updates
+
+riskLevel:
+- LOW: Isolated change, no side effects expected
+- MEDIUM: Touches shared code or multiple modules
+- HIGH: Critical path, authentication, data integrity
+
+estimatedScope:
+- SMALL: 1-2 files, minor change
+- MEDIUM: 3-5 files, moderate changes
+- LARGE: 6+ files, significant changes
+
+--------------------------------------------------
+Examples
+--------------------------------------------------
+
+Example 1: UI text change ticket
+- changeType: "ENHANCEMENT"
+- intent: "Modify the login page welcome text without changing application logic."
+- candidateModules: ["Login"]
+- expectedFileTypes: ["html"]
+- avoidFileTypes: ["ts", "scss", "spec"]
+- expectedChanges: ["Update displayed welcome text"]
+- mustNotChange: ["Business logic", "Authentication flow", "Services", "Routing"]
+- validationChecklist: ["New text is displayed", "Old text is no longer visible", "Component renders", "No logic changes"]
+- riskLevel: "LOW"
+- estimatedScope: "SMALL"
+
+Example 2: Add new API endpoint
+- changeType: "NEW_FEATURE"
+- intent: "Create a new REST endpoint for employee search with pagination."
+- candidateModules: ["Employee", "API"]
+- expectedFileTypes: ["ts", "spec"]
+- avoidFileTypes: ["html", "css", "scss"]
+- expectedChanges: ["New controller method", "New service method", "New route registration"]
+- mustNotChange: ["Existing endpoints", "Authentication middleware", "Database schema"]
+- validationChecklist: ["Endpoint returns 200", "Pagination works", "Auth required", "Unit tests pass"]
+- riskLevel: "MEDIUM"
+- estimatedScope: "MEDIUM"
+
+--------------------------------------------------
+
+Now generate the Engineering Contract for the ticket above.
+Return ONLY the JSON object."""
+
+
+# ---------------------------------------------------------------------------
+# Implementation Contract prompts (Phase 3 — after repo search)
+# ---------------------------------------------------------------------------
+
+
+def implementation_contract_system_prompt() -> str:
+    """System prompt for the implementation contract generation phase."""
+    return (
+        "You are a Technical Lead reviewing actual source files from a repository.\n\n"
+        "Your job is to produce an Implementation Contract that tells the developer "
+        "EXACTLY which files to modify or create.\n\n"
+        "CRITICAL RULES:\n"
+        "1. ALWAYS prefer MODIFY over CREATE.\n"
+        "2. If an existing file can satisfy the requirement with edits, choose MODIFY.\n"
+        "3. Choose CREATE only when absolutely no existing file is suitable.\n"
+        "4. List files that must NOT be touched as protectedFiles.\n"
+        "5. Be specific about what changes are expected in each file.\n"
+        "6. Return ONLY valid JSON. No markdown. No code fences.\n"
+    )
+
+
+def implementation_contract_user_prompt(
+    workflow: dict[str, Any],
+    planning: dict[str, Any],
+    candidate_paths: list[str],
+    file_contents: dict[str, str],
+    architecture_knowledge: dict[str, Any] | None = None,
+) -> str:
+    """
+    Build the user prompt for implementation contract generation.
+
+    This prompt provides the LLM with:
+    - Ticket information
+    - Engineering Contract (from Phase 1)
+    - Actual file paths found in the repository
+    - Actual file contents of top candidates
+
+    The LLM must decide exactly which files to MODIFY or CREATE.
+
+    Args:
+        workflow: Workflow event with ticket info.
+        planning: Engineering Contract from Phase 1.
+        candidate_paths: All candidate file paths found in the repo.
+        file_contents: Downloaded file contents (path -> content).
+        architecture_knowledge: Architecture knowledge from S3.
+    """
+    # Build file contents section
+    files_section = ""
+    for path, content in file_contents.items():
+        # Truncate very large files to keep context manageable
+        truncated = content[:3000] if len(content) > 3000 else content
+        files_section += f"\n--- FILE: {path} ---\n{truncated}\n"
+
+    # Architecture summary (condensed)
+    arch_section = ""
+    if architecture_knowledge:
+        arch_section = (
+            "\n--------------------------------------------------\n"
+            "Architecture Knowledge (summary)\n"
+            "--------------------------------------------------\n\n"
+            f"{json.dumps(architecture_knowledge, indent=2)[:2000]}\n"
+        )
+
+    return f"""Produce an Implementation Contract for this ticket.
+
+You have been given ACTUAL files from the repository.
+Analyze them and decide exactly which files to MODIFY or CREATE.
+
+--------------------------------------------------
+TICKET
+--------------------------------------------------
+
+Ticket ID: {workflow.get("ticketId", "")}
+Summary: {workflow.get("summary", "")}
+Description: {workflow.get("description", "")}
+
+--------------------------------------------------
+ENGINEERING CONTRACT (from planning phase)
+--------------------------------------------------
+
+Change Type: {planning.get("changeType", "")}
+Intent: {planning.get("intent", "")}
+Candidate Modules: {json.dumps(planning.get("candidateModules", []))}
+Expected File Types: {json.dumps(planning.get("expectedFileTypes", []))}
+Avoid File Types: {json.dumps(planning.get("avoidFileTypes", []))}
+Expected Changes: {json.dumps(planning.get("expectedChanges", []))}
+Must Not Change: {json.dumps(planning.get("mustNotChange", []))}
+
+--------------------------------------------------
+REPOSITORY FILES FOUND (candidates)
+--------------------------------------------------
+
+All candidate paths:
+{json.dumps(candidate_paths, indent=2)}
+
+--------------------------------------------------
+ACTUAL FILE CONTENTS
+--------------------------------------------------
+{files_section}
+{arch_section}
+--------------------------------------------------
+INSTRUCTIONS
+--------------------------------------------------
+
+Based on the actual file contents above:
+
+1. Identify which existing files should be MODIFIED to satisfy the ticket.
+2. Only suggest CREATE if no existing file can be modified.
+3. For each MODIFY file, describe the specific expected changes.
+4. List files/areas that must NOT be touched as protectedFiles.
+5. Provide a validation checklist for the developer.
+
+Return ONLY this JSON structure:
+
+{{
+  "files": [
+    {{
+      "path": "exact/file/path.ext",
+      "operation": "MODIFY",
+      "reason": "Why this file needs changes",
+      "expectedChanges": ["Specific change 1", "Specific change 2"]
+    }}
+  ],
+  "protectedFiles": ["files/that/must/not/change.ext"],
+  "allowedOperations": ["MODIFY", "CREATE"],
+  "validationChecklist": ["Validation point 1", "Validation point 2"]
+}}
+
+IMPORTANT:
+- Use EXACT file paths from the candidate list above.
+- For MODIFY operations, the file MUST exist in the candidates list.
+- For CREATE operations, provide the full intended path.
+- Do NOT include files from avoidFileTypes.
+- protectedFiles should include files related to mustNotChange areas.
+
+Return ONLY valid JSON. No markdown. No code fences."""

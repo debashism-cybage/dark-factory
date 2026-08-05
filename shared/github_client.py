@@ -222,6 +222,46 @@ class GitHubClient:
 
         return results
 
+    def search_files_by_keywords(
+        self,
+        keywords: list[str],
+        branch: str | None = None,
+        max_results: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        Search repository files by multiple keywords matched against file paths.
+
+        Each file is scored by how many keywords match its path (case-insensitive).
+        Results are sorted by relevance (number of keyword hits) descending.
+
+        Args:
+            keywords: List of keywords to match against file paths.
+            branch: Branch to search (defaults to default_branch).
+            max_results: Maximum number of results to return.
+
+        Returns:
+            List of dicts with 'path' and 'score' keys, sorted by score descending.
+        """
+        files = self.get_all_files(branch)
+        scored: list[dict[str, Any]] = []
+
+        normalized_keywords = [kw.lower() for kw in keywords if kw.strip()]
+
+        for item in files:
+            path = item["path"]
+            path_lower = path.lower()
+
+            # Score: count how many keywords appear in the file path
+            score = sum(1 for kw in normalized_keywords if kw in path_lower)
+
+            if score > 0:
+                scored.append({"path": path, "score": score})
+
+        # Sort by score descending, then path alphabetically for stability
+        scored.sort(key=lambda x: (-x["score"], x["path"]))
+
+        return scored[:max_results]
+
     def get_repository_summary(self, branch: str | None = None) -> dict[str, Any]:
         """Get a lightweight summary of the repository structure."""
         files = self.get_all_files(branch)

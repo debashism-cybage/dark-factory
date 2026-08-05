@@ -1,4 +1,4 @@
-.PHONY: install lint test build deploy clean layer
+.PHONY: install lint test build deploy clean layer verify
 
 # ---------------------------------------------------------------------------
 # Variables
@@ -27,6 +27,9 @@ format:
 
 test:
 	pytest tests/ -v --cov=shared --cov=agents --cov=workflow-starter --cov-report=term-missing
+
+verify: lint test
+	@echo "All checks passed. Safe to push."
 
 # ---------------------------------------------------------------------------
 # Build & Deploy
