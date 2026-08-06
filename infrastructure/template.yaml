@@ -123,7 +123,13 @@ Resources:
               Action:
                 - states:ListExecutions
                 - states:DescribeExecution
+                - states:GetExecutionHistory
               Resource: !Ref WorkflowStateMachine
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogStreams
+                - logs:GetLogEvents
+              Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*-agent*
       Events:
         DashboardApi:
           Type: Api

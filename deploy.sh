@@ -5,9 +5,10 @@
 # Usage:
 #   ./deploy.sh                    # Deploy all
 #   ./deploy.sh planning           # Deploy only planning agent
-#   ./deploy.sh workflow-starter   # Deploy only workflow-starter
+#   ./deploy.sh dashboard-api      # Deploy only dashboard API
 #
-# Valid agents: planning, architecture, development, validation, release, workflow-starter
+# Valid targets: planning, architecture, development, validation, release,
+#               workflow-starter, dashboard-api
 
 set -e
 
@@ -21,6 +22,7 @@ declare -A LAMBDA_MAP=(
     ["validation"]="agents/validation:validation-agent"
     ["release"]="agents/release:release-agent"
     ["workflow-starter"]="workflow-starter:workflow-starter"
+    ["dashboard-api"]="dashboard_api:dashboard-agent"
 )
 
 DEPLOY_DIR="./deploy"
@@ -46,8 +48,13 @@ deploy_lambda() {
     rm -rf "$staging"
     mkdir -p "$staging/shared"
 
-    # Copy handler
-    cp "$SCRIPT_DIR/$source_path/handler.py" "$staging/lambda_function.py"
+    # Copy ALL Python files from the source folder (not just handler.py)
+    cp "$SCRIPT_DIR/$source_path/"*.py "$staging/"
+
+    # Rename handler.py to lambda_function.py (AWS Lambda default)
+    if [ -f "$staging/handler.py" ]; then
+        mv "$staging/handler.py" "$staging/lambda_function.py"
+    fi
 
     # Copy shared library (including subdirectories)
     cp -r "$SCRIPT_DIR/shared/"* "$staging/shared/"
@@ -104,7 +111,7 @@ mkdir -p "$DEPLOY_DIR"
 
 # Determine which agents to deploy
 if [ -z "$1" ] || [ "$1" = "all" ]; then
-    AGENTS=("planning" "architecture" "development" "validation" "release" "workflow-starter")
+    AGENTS=("planning" "architecture" "development" "validation" "release" "workflow-starter" "dashboard-api")
 else
     AGENTS=("$1")
 fi
@@ -113,8 +120,8 @@ fi
 RESULTS=()
 for agent in "${AGENTS[@]}"; do
     if [ -z "${LAMBDA_MAP[$agent]}" ]; then
-        echo "ERROR: Unknown agent '$agent'"
-        echo "Valid options: planning, architecture, development, validation, release, workflow-starter"
+        echo "ERROR: Unknown target '$agent'"
+        echo "Valid options: planning, architecture, development, validation, release, workflow-starter, dashboard-api"
         exit 1
     fi
     if deploy_lambda "$agent"; then

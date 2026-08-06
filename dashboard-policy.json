@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StepFunctionsRead",
+      "Effect": "Allow",
+      "Action": [
+        "states:ListExecutions",
+        "states:DescribeExecution",
+        "states:GetExecutionHistory"
+      ],
+      "Resource": [
+        "arn:aws:states:us-east-1:319110096340:stateMachine:AI-Delivery-Orchestrator",
+        "arn:aws:states:us-east-1:319110096340:execution:AI-Delivery-Orchestrator:*"
+      ]
+    },
+    {
+      "Sid": "CloudWatchLogsRead",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents"
+      ],
+      "Resource": [
+        "arn:aws:logs:us-east-1:319110096340:log-group:/aws/lambda/planning-agent:*",
+        "arn:aws:logs:us-east-1:319110096340:log-group:/aws/lambda/development-agent:*",
+        "arn:aws:logs:us-east-1:319110096340:log-group:/aws/lambda/validation-agent:*",
+        "arn:aws:logs:us-east-1:319110096340:log-group:/aws/lambda/release-agent:*"
+      ]
+    }
+  ]
+}

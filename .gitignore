@@ -39,3 +39,4 @@ Thumbs.db
 
 # Misc
 *.log
+frontend/**/*

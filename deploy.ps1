@@ -8,16 +8,17 @@
 
 .PARAMETER Agent
     Deploy a specific agent. Options: all, planning, architecture, development,
-    validation, release, workflow-starter.
+    validation, release, workflow-starter, dashboard-api.
     Default: all
 
 .EXAMPLE
     .\deploy.ps1                    # Deploy all
     .\deploy.ps1 -Agent planning    # Deploy only planning agent
+    .\deploy.ps1 -Agent dashboard-api  # Deploy only dashboard API
 #>
 
 param(
-    [ValidateSet("all", "planning", "architecture", "development", "validation", "release", "workflow-starter")]
+    [ValidateSet("all", "planning", "architecture", "development", "validation", "release", "workflow-starter", "dashboard-api")]
     [string]$Agent = "all"
 )
 
@@ -33,6 +34,7 @@ $LambdaMap = @{
     "validation"       = @{ Source = "agents\validation";    FunctionName = "validation-agent" }
     "release"          = @{ Source = "agents\release";       FunctionName = "release-agent" }
     "workflow-starter" = @{ Source = "workflow-starter";      FunctionName = "workflow-starter" }
+    "dashboard-api"    = @{ Source = "dashboard_api";        FunctionName = "dashboard-agent" }
 }
 
 $DeployDir = Join-Path $PSScriptRoot "deploy"
@@ -71,7 +73,7 @@ function Deploy-Lambda {
     # Create staging directory
     New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
-    # Copy handler(s)
+    # Copy ALL Python files from the source folder
     $handlerSource = Join-Path $ProjectRoot $SourcePath
     Get-ChildItem -Path $handlerSource -Filter "*.py" | ForEach-Object {
         Copy-Item $_.FullName $stagingDir
@@ -81,8 +83,6 @@ function Deploy-Lambda {
     $handlerFile = Join-Path $stagingDir "handler.py"
     $lambdaFile = Join-Path $stagingDir "lambda_function.py"
     if (Test-Path $handlerFile) {
-        # Read content and replace the handler reference
-        $content = Get-Content $handlerFile -Raw
         Move-Item $handlerFile $lambdaFile
     }
 

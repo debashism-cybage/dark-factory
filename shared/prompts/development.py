@@ -9,6 +9,7 @@ Prompt philosophy:
 - Never modify unrelated code.
 - Never refactor, simplify, rename, or reorder.
 - Preserve formatting, comments, imports, and business logic.
+- ALL generated code MUST compile without errors.
 """
 
 import json
@@ -33,7 +34,16 @@ def system_prompt() -> str:
         "11. If only one line needs to change, change only one line.\n"
         "12. Return ONLY the complete file contents.\n"
         "13. Do not wrap in markdown. Do not use code fences.\n"
-        "14. Do not explain the code.\n"
+        "14. Do not explain the code.\n\n"
+        "BUILD SAFETY RULES — the code MUST compile:\n"
+        "15. Every import path MUST point to a file that exists or is being created in this changeset.\n"
+        "16. Do NOT reference files that do not exist in the repository.\n"
+        "17. Every Angular component MUST have all required imports in its @Component.imports array.\n"
+        "18. If using *ngIf, *ngFor, or other directives, import CommonModule.\n"
+        "19. If using Angular 17+ standalone components, use @if/@for control flow instead of *ngIf/*ngFor.\n"
+        "20. Every TypeScript file MUST have valid type declarations.\n"
+        "21. Lazy-loaded routes MUST point to files that exist.\n"
+        "22. Every exported class/function referenced in another file MUST actually be exported.\n"
     )
 
 
@@ -46,13 +56,6 @@ def user_prompt_modify(
 ) -> str:
     """
     Build the user prompt for MODIFYING an existing file.
-
-    Args:
-        event: Workflow event with ticket info.
-        file_path: The file to modify.
-        existing_content: Current file content from the repository.
-        expected_changes: Specific changes expected (from implementationContract).
-        validation_checklist: Validation points from the contract.
     """
     planning = event.get("planning", {})
 
@@ -99,6 +102,12 @@ RULES
 6. If only one line needs changing, change only that one line.
 7. Return the COMPLETE file with your changes applied.
 
+BUILD SAFETY:
+- Every import MUST resolve to an existing file.
+- Do NOT add routes/imports referencing files that don't exist.
+- If you use *ngIf/*ngFor, add CommonModule to imports — OR use @if/@for.
+- The code MUST compile with `ng build` or `tsc` without errors.
+
 Return ONLY the complete modified file contents.
 Do not wrap in markdown. Do not use ``` fences. Do not explain."""
 
@@ -111,12 +120,6 @@ def user_prompt_create(
 ) -> str:
     """
     Build the user prompt for CREATING a new file.
-
-    Args:
-        event: Workflow event with ticket info.
-        file_path: The file to create.
-        expected_changes: What the new file should contain/do.
-        validation_checklist: Validation points from the contract.
     """
     planning = event.get("planning", {})
 
@@ -156,6 +159,13 @@ RULES
 4. Follow standard conventions for the file type.
 5. Return the COMPLETE file contents.
 
+BUILD SAFETY:
+- Every import MUST resolve to an existing file or a file being created in this changeset.
+- Do NOT reference modules that don't exist.
+- If this is an Angular component, include ALL required imports (CommonModule, etc.).
+- If this is a route file, every loadComponent path MUST resolve to a real file.
+- The code MUST compile with `ng build` or `tsc` without errors.
+
 Return ONLY the complete file contents.
 Do not wrap in markdown. Do not use ``` fences. Do not explain."""
 
@@ -185,13 +195,6 @@ def review_user_prompt(
 ) -> str:
     """
     Build the user prompt for the self-review step.
-
-    Args:
-        event: Workflow event with ticket info.
-        file_entry: File entry from implementationContract.
-        generated_code: The generated/modified code.
-        existing_code: Original file content (None for CREATE).
-        protected_files: Files that must not be touched.
     """
     original_section = ""
     if existing_code:
@@ -231,3 +234,70 @@ VERIFY
 4. Were ONLY the expected changes made?
 
 Respond with ONLY: PASS or FAIL (with brief reason if FAIL)."""
+
+
+# ---------------------------------------------------------------------------
+# Build validation prompts
+# ---------------------------------------------------------------------------
+
+
+def build_validation_system_prompt() -> str:
+    """System prompt for the cross-file build validation step."""
+    return (
+        "You are a build engineer verifying that a set of code changes will compile.\n"
+        "Check for:\n"
+        "1. Import paths that reference non-existent files.\n"
+        "2. Missing module imports (e.g., CommonModule for *ngIf).\n"
+        "3. Routes that lazy-load components from non-existent paths.\n"
+        "4. Type errors (referencing classes/interfaces that don't exist).\n"
+        "5. Missing exports that other files depend on.\n\n"
+        "Respond with EXACTLY this JSON format:\n"
+        '{"status": "PASS"}\n'
+        "or\n"
+        '{"status": "FAIL", "issues": [{"file": "path", "issue": "description", "fix": "what to change"}]}\n'
+        "Return ONLY valid JSON. No markdown. No explanation."
+    )
+
+
+def build_validation_user_prompt(
+    generated_files: list[dict[str, Any]],
+    repository_files: list[str],
+) -> str:
+    """
+    Build the user prompt for cross-file build validation.
+
+    Args:
+        generated_files: List of dicts with 'path' and 'content' keys.
+        repository_files: List of existing file paths in the repository.
+    """
+    files_section = ""
+    for f in generated_files:
+        content_preview = f.get("content", "")[:2000]
+        files_section += f"\n--- {f['path']} ---\n{content_preview}\n"
+
+    return f"""Verify that these code changes will compile without errors.
+
+--------------------------------------------------
+GENERATED/MODIFIED FILES
+--------------------------------------------------
+{files_section}
+--------------------------------------------------
+EXISTING REPOSITORY FILES (partial list)
+--------------------------------------------------
+
+{json.dumps(repository_files[:200], indent=2)}
+
+--------------------------------------------------
+CHECK FOR
+--------------------------------------------------
+
+1. Does any import reference a file that does NOT exist in the repository AND is NOT being created?
+2. Does any Angular component use *ngIf/*ngFor without importing CommonModule?
+3. Does any route lazy-load a component from a non-existent path?
+4. Does any file reference a class/interface that doesn't exist anywhere?
+5. Are all exported names used correctly in other files?
+
+Return ONLY valid JSON:
+{{"status": "PASS"}}
+or
+{{"status": "FAIL", "issues": [{{"file": "...", "issue": "...", "fix": "..."}}]}}"""

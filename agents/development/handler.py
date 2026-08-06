@@ -101,6 +101,155 @@ def _self_review(
 
 
 # ---------------------------------------------------------------------------
+# Build Validation
+# ---------------------------------------------------------------------------
+
+
+def _run_build_validation(
+    bedrock: BedrockClient,
+    github: GitHubClient,
+    branch: str,
+    generated_files: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Run cross-file build validation using Bedrock.
+
+    Checks that all imports resolve, modules are declared correctly,
+    and lazy-loaded routes point to existing files.
+
+    Returns:
+        List of issues found (empty if all clear).
+    """
+    try:
+        # Get the list of files that were generated/modified
+        files_with_content: list[dict[str, Any]] = []
+        for f in generated_files:
+            path = f["path"]
+            try:
+                content = github.get_file_content(path, branch)
+                files_with_content.append({"path": path, "content": content})
+            except Exception:
+                pass
+
+        if not files_with_content:
+            return []
+
+        # Get existing repository file list for context
+        try:
+            all_files = github.get_all_files(branch)
+            repo_file_paths = [item["path"] for item in all_files]
+        except Exception:
+            repo_file_paths = []
+
+        # Ask Bedrock to validate
+        result = bedrock.converse_json(
+            system_prompt=prompts.build_validation_system_prompt(),
+            user_prompt=prompts.build_validation_user_prompt(
+                generated_files=files_with_content,
+                repository_files=repo_file_paths,
+            ),
+            max_tokens=2048,
+        )
+
+        if result.get("status") == "FAIL":
+            issues = result.get("issues", [])
+            logger.info("Build validation found issues", issues=issues)
+            return issues
+
+        logger.info("Build validation PASSED")
+        return []
+
+    except Exception as ex:
+        logger.warning("Build validation failed to execute", error=str(ex))
+        return []
+
+
+def _attempt_build_fix(
+    bedrock: BedrockClient,
+    github: GitHubClient,
+    branch: str,
+    event: dict[str, Any],
+    issue: dict[str, Any],
+    ticket_id: str,
+    validation_checklist: list[str],
+) -> dict[str, Any] | None:
+    """
+    Attempt to fix a build issue found during validation.
+
+    Args:
+        issue: Dict with 'file', 'issue', 'fix' keys.
+
+    Returns:
+        File entry dict if fixed, None if fix failed.
+    """
+    file_path = issue.get("file", "")
+    issue_desc = issue.get("issue", "")
+    suggested_fix = issue.get("fix", "")
+
+    if not file_path:
+        return None
+
+    logger.info(
+        "Attempting build fix",
+        file_path=file_path,
+        issue=issue_desc,
+    )
+
+    try:
+        # Get current file content
+        try:
+            existing_code = github.get_file_content(file_path, branch)
+        except Exception:
+            try:
+                existing_code = github.get_file_content(file_path)
+            except Exception:
+                logger.warning("Cannot read file for build fix", file_path=file_path)
+                return None
+
+        # Generate fix
+        fix_prompt = (
+            f"Fix this compilation error in the file.\n\n"
+            f"File: {file_path}\n"
+            f"Error: {issue_desc}\n"
+            f"Suggested fix: {suggested_fix}\n\n"
+            f"CURRENT FILE:\n\n{existing_code}\n\n"
+            f"Apply ONLY the fix for this specific error. "
+            f"Do NOT change anything else. "
+            f"Return the COMPLETE fixed file contents.\n"
+            f"Do not wrap in markdown. Do not use code fences. Do not explain."
+        )
+
+        fixed_code = bedrock.converse(
+            system_prompt=prompts.system_prompt(),
+            user_prompt=fix_prompt,
+            max_tokens=8192,
+        )
+
+        # Commit the fix
+        commit_msg = f"fix({ticket_id}): resolve build error in {file_path}"
+        github.commit_file(
+            branch=branch,
+            path=file_path,
+            content=fixed_code,
+            message=commit_msg,
+        )
+
+        logger.info("Build fix committed", file_path=file_path)
+
+        return {
+            "path": file_path,
+            "operation": "BUILD_FIX",
+            "status": "SUCCESS",
+            "size": len(fixed_code),
+            "issue": issue_desc,
+        }
+
+    except Exception as ex:
+        logger.error("Build fix failed", file_path=file_path, error=str(ex))
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Main handler
 # ---------------------------------------------------------------------------
 
@@ -331,6 +480,41 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         event["currentAgent"] = "development"
         event["artifacts"] = {"reason": abort_reason, "generatedFiles": generated_files}
         return event
+
+    # -----------------------------------------------------------------------
+    # Build Validation: Cross-file compilation check
+    # -----------------------------------------------------------------------
+    successful_files = [f for f in generated_files if f.get("status") == "SUCCESS"]
+
+    if successful_files:
+        logger.info("Running build validation", file_count=len(successful_files))
+
+        build_issues = _run_build_validation(
+            bedrock=bedrock,
+            github=github,
+            branch=branch,
+            generated_files=successful_files,
+        )
+
+        if build_issues:
+            logger.warning(
+                "Build validation found issues, attempting fixes",
+                issue_count=len(build_issues),
+            )
+
+            # Attempt to fix each issue
+            for issue in build_issues[:3]:  # Limit to 3 fixes per run
+                fixed = _attempt_build_fix(
+                    bedrock=bedrock,
+                    github=github,
+                    branch=branch,
+                    event=event,
+                    issue=issue,
+                    ticket_id=ticket_id,
+                    validation_checklist=validation_checklist,
+                )
+                if fixed:
+                    generated_files.append(fixed)
 
     # -----------------------------------------------------------------------
     # Create Pull Request
