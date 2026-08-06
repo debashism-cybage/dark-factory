@@ -8,7 +8,7 @@ a rich dashboard payload for the React frontend.
 
 import json
 import re
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 import boto3
@@ -139,6 +139,7 @@ class DashboardService:
             "quality": quality,
             "activity": activity,
             "history": history,
+            "recoveryHistory": self._extract_recovery_history(hero),
         }
 
     # -----------------------------------------------------------------------
@@ -193,6 +194,67 @@ class DashboardService:
 
         return ""
 
+    def _detect_replan_attempts(self, execution_arn: str) -> int:
+        """
+        Detect how many times the workflow has looped back to PlanningAgent.
+
+        Counts TaskStateEntered events for PlanningAgent. The first entry is
+        the initial plan, subsequent entries are replans.
+
+        Returns:
+            Number of replan attempts (0 if no replanning occurred).
+        """
+        try:
+            history = self._get_execution_history(execution_arn)
+            planning_entries = 0
+
+            for event in history:
+                if event.get("type") == "TaskStateEntered":
+                    details = event.get("stateEnteredEventDetails", {})
+                    if details.get("name") == "PlanningAgent":
+                        planning_entries += 1
+
+            # First entry is the initial plan, rest are replans
+            return max(planning_entries - 1, 0)
+
+        except Exception:
+            return 0
+
+    def _extract_recovery_history(self, hero: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        Extract recovery history from the execution output.
+
+        The recoveryHistory is stored in the workflow event as it flows
+        through Step Functions. For completed executions, it's in the output.
+        For running executions, we derive it from the replan count.
+
+        Returns:
+            List of recovery history entries.
+        """
+        replan_attempt = hero.get("replanAttempt", 0)
+
+        if replan_attempt == 0:
+            return []
+
+        # Build recovery history from what we know
+        recovery: list[dict[str, Any]] = []
+        for i in range(1, replan_attempt + 1):
+            status = "SUCCESS" if i < replan_attempt else "REPLANNING"
+            # For completed workflows, all attempts were successful
+            if hero.get("status") in ("COMPLETED", "SUCCEEDED"):
+                status = "SUCCESS"
+
+            recovery.append(
+                {
+                    "attempt": i,
+                    "reason": "SHA_MISMATCH",
+                    "changedFiles": [],
+                    "status": status,
+                }
+            )
+
+        return recovery
+
     # -----------------------------------------------------------------------
     # Pipeline
     # -----------------------------------------------------------------------
@@ -200,8 +262,7 @@ class DashboardService:
     def _build_completed_pipeline(self) -> list[dict[str, Any]]:
         """Return a fully completed pipeline for SUCCEEDED executions."""
         return [
-            {"id": stage, "label": stage.capitalize(), "status": "completed"}
-            for stage in STAGES
+            {"id": stage, "label": stage.capitalize(), "status": "completed"} for stage in STAGES
         ]
 
     def _build_pipeline_from_history(
@@ -244,11 +305,13 @@ class DashboardService:
             else:
                 status = "pending"
 
-            pipeline.append({
-                "id": stage_name,
-                "label": stage_name.capitalize(),
-                "status": status,
-            })
+            pipeline.append(
+                {
+                    "id": stage_name,
+                    "label": stage_name.capitalize(),
+                    "status": status,
+                }
+            )
 
         return pipeline
 
@@ -333,6 +396,7 @@ class DashboardService:
     ) -> dict[str, Any]:
         """Build the hero section."""
         input_data = self._parse_json(execution.get("input", "{}"))
+        output_data = self._parse_json(execution.get("output", "{}"))
         exec_status = execution.get("status", "RUNNING")
         started_at = execution.get("startDate")
 
@@ -343,6 +407,21 @@ class DashboardService:
             workflow_status = "FAILED"
         else:
             workflow_status = "RUNNING"
+
+        # Detect replanning from output or execution history
+        replan_attempt = 0
+        recovery_status = ""
+
+        # Check output for replan info (completed executions)
+        if output_data:
+            replan_attempt = output_data.get("replanAttempt", 0)
+
+        # Check execution history for DevelopmentChoice → PlanningAgent transitions
+        if exec_status == "RUNNING":
+            replan_attempt = self._detect_replan_attempts(execution.get("executionArn", ""))
+
+        if replan_attempt > 0:
+            recovery_status = f"Adaptive Replanning (Attempt {replan_attempt}/3)"
 
         return {
             "workflowId": input_data.get("workflowId", execution.get("name", "")),
@@ -360,6 +439,8 @@ class DashboardService:
             "elapsed": self._calculate_elapsed(started_at),
             "eta": self._estimate_eta(progress),
             "executionStatus": exec_status,
+            "replanAttempt": replan_attempt,
+            "recoveryStatus": recovery_status,
         }
 
     # -----------------------------------------------------------------------
@@ -392,6 +473,13 @@ class DashboardService:
             "release": "DevOps Engineer",
         }
 
+        # Detect replanning
+        replan_attempt = self._detect_replan_attempts(execution.get("executionArn", ""))
+        recovery_status = ""
+        if replan_attempt > 0:
+            recovery_status = f"Adaptive Replanning (Attempt {replan_attempt}/3)"
+            risk = "Medium"
+
         return {
             "businessGoal": input_data.get("summary", ""),
             "currentStatus": status_label,
@@ -399,6 +487,8 @@ class DashboardService:
             "risk": risk,
             "nextAction": self._get_next_action(pipeline, exec_status),
             "eta": self._estimate_eta_from_pipeline(pipeline),
+            "replanAttempt": replan_attempt,
+            "recoveryStatus": recovery_status,
         }
 
     def _get_next_action(self, pipeline: list[dict[str, Any]], exec_status: str) -> str:
@@ -462,7 +552,11 @@ class DashboardService:
             "deployment": {
                 "value": "Released" if has_release else "Ready" if has_validation else "Pending",
                 "status": "passed" if has_release else "passed" if has_validation else "pending",
-                "subtitle": "Deployed" if has_release else "PR created" if has_validation else "Awaiting deployment",
+                "subtitle": "Deployed"
+                if has_release
+                else "PR created"
+                if has_validation
+                else "Awaiting deployment",
             },
         }
 
@@ -472,7 +566,11 @@ class DashboardService:
             "coverage": {"value": "Pending", "status": "pending", "subtitle": "No active workflow"},
             "security": {"value": "Pending", "status": "pending", "subtitle": "No active workflow"},
             "tests": {"value": "Pending", "status": "pending", "subtitle": "No active workflow"},
-            "deployment": {"value": "Pending", "status": "pending", "subtitle": "No active workflow"},
+            "deployment": {
+                "value": "Pending",
+                "status": "pending",
+                "subtitle": "No active workflow",
+            },
         }
 
     # -----------------------------------------------------------------------
@@ -540,12 +638,14 @@ class DashboardService:
                 elif "[WARNING]" in message or '"level": "WARNING"' in message:
                     level = "warning"
 
-                messages.append({
-                    "timestamp": datetime.fromtimestamp(timestamp / 1000, tz=UTC).isoformat(),
-                    "agent": agent,
-                    "message": clean_msg,
-                    "level": level,
-                })
+                messages.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(timestamp / 1000, tz=UTC).isoformat(),
+                        "agent": agent,
+                        "message": clean_msg,
+                        "level": level,
+                    }
+                )
 
                 if len(messages) >= limit:
                     break
@@ -606,14 +706,16 @@ class DashboardService:
                 seconds = int(delta.total_seconds())
                 duration = f"{seconds // 60}m {seconds % 60}s"
 
-            history.append({
-                "workflowId": input_data.get("workflowId", ex.get("name", "")),
-                "ticketId": input_data.get("ticketId", ""),
-                "summary": input_data.get("summary", ""),
-                "status": wf_status,
-                "startedAt": started.isoformat() if started else "",
-                "duration": duration,
-            })
+            history.append(
+                {
+                    "workflowId": input_data.get("workflowId", ex.get("name", "")),
+                    "ticketId": input_data.get("ticketId", ""),
+                    "summary": input_data.get("summary", ""),
+                    "status": wf_status,
+                    "startedAt": started.isoformat() if started else "",
+                    "duration": duration,
+                }
+            )
 
         return history
 

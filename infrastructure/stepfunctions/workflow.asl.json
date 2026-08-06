@@ -1,5 +1,5 @@
 {
-  "Comment": "Dark Factory: AI-Driven Software Delivery Workflow",
+  "Comment": "Dark Factory: AI-Driven Software Delivery Workflow with Adaptive Replanning",
   "StartAt": "PlanningAgent",
   "States": {
     "PlanningAgent": {
@@ -9,7 +9,6 @@
         "FunctionName": "${PlanningAgentArn}",
         "Payload.$": "$"
       },
-      "ResultPath": "$",
       "ResultSelector": {
         "workflowId.$": "$.Payload.workflowId",
         "ticketId.$": "$.Payload.ticketId",
@@ -22,6 +21,7 @@
         "status.$": "$.Payload.status",
         "planning.$": "$.Payload.planning"
       },
+      "ResultPath": "$",
       "Retry": [
         {
           "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
@@ -46,20 +46,7 @@
         "FunctionName": "${DevelopmentAgentArn}",
         "Payload.$": "$"
       },
-      "ResultPath": "$",
-      "ResultSelector": {
-        "workflowId.$": "$.Payload.workflowId",
-        "ticketId.$": "$.Payload.ticketId",
-        "summary.$": "$.Payload.summary",
-        "description.$": "$.Payload.description",
-        "priority.$": "$.Payload.priority",
-        "issueType.$": "$.Payload.issueType",
-        "project.$": "$.Payload.project",
-        "assignee.$": "$.Payload.assignee",
-        "status.$": "$.Payload.status",
-        "planning.$": "$.Payload.planning",
-        "artifacts.$": "$.Payload.artifacts"
-      },
+      "OutputPath": "$.Payload",
       "Retry": [
         {
           "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
@@ -75,7 +62,33 @@
           "Next": "WorkflowFailed"
         }
       ],
-      "Next": "ValidationAgent"
+      "Next": "DevelopmentChoice"
+    },
+    "DevelopmentChoice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.status",
+          "StringEquals": "REPLAN_REQUIRED",
+          "Next": "PlanningAgent"
+        },
+        {
+          "Variable": "$.status",
+          "StringEquals": "MANUAL_REVIEW_REQUIRED",
+          "Next": "ManualReviewRequired"
+        },
+        {
+          "Variable": "$.status",
+          "StringEquals": "DEVELOPMENT_ABORTED",
+          "Next": "WorkflowFailed"
+        }
+      ],
+      "Default": "ValidationAgent"
+    },
+    "ManualReviewRequired": {
+      "Type": "Fail",
+      "Cause": "Maximum replan attempts exceeded. Manual review required.",
+      "Error": "ManualReviewRequired"
     },
     "ValidationAgent": {
       "Type": "Task",
@@ -84,7 +97,6 @@
         "FunctionName": "${ValidationAgentArn}",
         "Payload.$": "$"
       },
-      "ResultPath": "$",
       "ResultSelector": {
         "workflowId.$": "$.Payload.workflowId",
         "ticketId.$": "$.Payload.ticketId",
@@ -98,6 +110,7 @@
         "planning.$": "$.Payload.planning",
         "artifacts.$": "$.Payload.artifacts"
       },
+      "ResultPath": "$",
       "Retry": [
         {
           "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
@@ -122,7 +135,6 @@
         "FunctionName": "${ReleaseAgentArn}",
         "Payload.$": "$"
       },
-      "ResultPath": "$",
       "ResultSelector": {
         "workflowId.$": "$.Payload.workflowId",
         "ticketId.$": "$.Payload.ticketId",
@@ -130,6 +142,7 @@
         "completedAt.$": "$.Payload.completedAt",
         "artifacts.$": "$.Payload.artifacts"
       },
+      "ResultPath": "$",
       "Retry": [
         {
           "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],

@@ -552,6 +552,215 @@ def _build_fallback_plan(event: dict[str, Any], error: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Adaptive Replanning
+# ---------------------------------------------------------------------------
+
+
+def _adaptive_replan(
+    bedrock: BedrockClient,
+    github: GitHubClient,
+    event: dict[str, Any],
+    changed_files: list[str],
+    original_contract: dict[str, Any],
+    architecture_knowledge: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """
+    Perform adaptive replanning for files that changed since the original plan.
+
+    Instead of re-planning the entire ticket, this:
+    1. Downloads fresh content of the changed files.
+    2. Computes new SHA256 hashes.
+    3. Asks the LLM to produce an updated implementationContract
+       that accounts for the new file state.
+    4. Preserves all unchanged decisions from the original contract.
+
+    Args:
+        bedrock: Initialized BedrockClient.
+        github: Initialized GitHubClient.
+        event: Workflow event with ticket info.
+        changed_files: List of file paths that had SHA mismatches.
+        original_contract: The original implementationContract that failed.
+        architecture_knowledge: Architecture knowledge from S3.
+
+    Returns:
+        Updated planning dict with new implementationContract.
+    """
+    replan_attempt = event.get("replanAttempt", 1)
+
+    logger.info(
+        "Adaptive replan: downloading fresh file content",
+        changed_files=changed_files,
+        replan_attempt=replan_attempt,
+    )
+
+    # Download fresh content of changed files
+    fresh_contents: dict[str, str] = {}
+    fresh_hashes: dict[str, str] = {}
+
+    for path in changed_files:
+        try:
+            content = github.get_file_content(path)
+            fresh_contents[path] = content
+            fresh_hashes[path] = sha256(content.encode("utf-8")).hexdigest()
+        except Exception as ex:
+            logger.warning("Could not download changed file", path=path, error=str(ex))
+
+    # Get original files from the contract that did NOT change
+    original_files = original_contract.get("files", [])
+    unchanged_files = [f for f in original_files if f["path"] not in changed_files]
+    changed_file_entries = [f for f in original_files if f["path"] in changed_files]
+
+    logger.info(
+        "Adaptive replan: files partitioned",
+        unchanged_count=len(unchanged_files),
+        changed_count=len(changed_file_entries),
+    )
+
+    # Ask LLM to produce updated contract for changed files only
+    try:
+        updated_entries = bedrock.converse_json(
+            system_prompt=_replan_system_prompt(),
+            user_prompt=_replan_user_prompt(
+                event=event,
+                changed_file_entries=changed_file_entries,
+                fresh_contents=fresh_contents,
+                original_contract=original_contract,
+            ),
+            max_tokens=4096,
+            temperature=0.1,
+        )
+
+        # Validate the response
+        updated_files = updated_entries.get("files", [])
+        if not isinstance(updated_files, list):
+            updated_files = changed_file_entries  # fallback to original entries
+
+        # Update SHA256 hashes for changed files
+        for entry in updated_files:
+            path = entry.get("path", "")
+            if path in fresh_hashes:
+                entry["sha256"] = fresh_hashes[path]
+            if not isinstance(entry.get("confidence"), (int, float)):
+                entry["confidence"] = 0.85
+
+    except Exception as ex:
+        logger.warning("Replan LLM call failed, updating hashes only", error=str(ex))
+        # Fallback: keep original entries but update hashes
+        updated_files = changed_file_entries
+        for entry in updated_files:
+            path = entry.get("path", "")
+            if path in fresh_hashes:
+                entry["sha256"] = fresh_hashes[path]
+
+    # Merge: unchanged files keep their original entries, changed files get updated
+    merged_files = unchanged_files + updated_files
+
+    # Rebuild the implementation contract
+    new_contract = {
+        "files": merged_files,
+        "protectedFiles": original_contract.get("protectedFiles", []),
+        "allowedOperations": original_contract.get("allowedOperations", ["MODIFY", "CREATE"]),
+        "validationChecklist": original_contract.get("validationChecklist", []),
+    }
+
+    # Build the planning output — reuse the original planning with updated contract
+    original_planning = event.get("planning", {})
+    planning = dict(original_planning)
+    planning["implementationContract"] = new_contract
+    planning["confidence"] = Decimal("0.85")
+
+    # Update filesToGenerate for compatibility
+    contract_files = [f["path"] for f in merged_files if f.get("path")]
+    if contract_files:
+        planning["filesToGenerate"] = contract_files
+
+    return planning
+
+
+def _replan_system_prompt() -> str:
+    """System prompt for adaptive replanning."""
+    return (
+        "You are a senior software architect performing adaptive replanning.\n\n"
+        "Context: A previous implementation plan was generated, but some target files\n"
+        "have changed in the repository since then. You must update the plan for\n"
+        "ONLY the changed files while preserving all other decisions.\n\n"
+        "Rules:\n"
+        "1. Only update entries for files that changed.\n"
+        "2. Keep the same operation (MODIFY/CREATE) unless the file was deleted.\n"
+        "3. Update expectedChanges to account for the new file content.\n"
+        "4. Do NOT touch unchanged files.\n"
+        "5. Return ONLY valid JSON.\n"
+    )
+
+
+def _replan_user_prompt(
+    event: dict[str, Any],
+    changed_file_entries: list[dict[str, Any]],
+    fresh_contents: dict[str, str],
+    original_contract: dict[str, Any],
+) -> str:
+    """Build user prompt for adaptive replanning of changed files."""
+    import json
+
+    # Build content section showing new file state
+    files_section = ""
+    for entry in changed_file_entries:
+        path = entry.get("path", "")
+        content = fresh_contents.get(path, "(could not download)")
+        # Truncate to keep context manageable
+        truncated = content[:3000] if len(content) > 3000 else content
+        files_section += f"\n--- {path} (CURRENT CONTENT) ---\n{truncated}\n"
+
+    return f"""Adaptive Replanning Required.
+
+Ticket: {event.get("ticketId", "")}
+Summary: {event.get("summary", "")}
+
+The following files have changed since the original plan was created.
+Update the implementation entries for ONLY these files.
+
+--------------------------------------------------
+CHANGED FILES (with their NEW content)
+--------------------------------------------------
+{files_section}
+--------------------------------------------------
+ORIGINAL IMPLEMENTATION ENTRIES (for these files)
+--------------------------------------------------
+
+{json.dumps(changed_file_entries, indent=2)}
+
+--------------------------------------------------
+ORIGINAL VALIDATION CHECKLIST
+--------------------------------------------------
+
+{json.dumps(original_contract.get("validationChecklist", []), indent=2)}
+
+--------------------------------------------------
+INSTRUCTIONS
+--------------------------------------------------
+
+1. For each changed file, update the "expectedChanges" to reflect
+   what needs to happen given the NEW file content.
+2. Keep the same "operation" (MODIFY) and "path".
+3. Adjust "reason" if the change strategy needs updating.
+4. Return a JSON object with exactly this format:
+
+{{
+  "files": [
+    {{
+      "path": "...",
+      "operation": "MODIFY",
+      "reason": "...",
+      "expectedChanges": ["..."],
+      "confidence": 0.85
+    }}
+  ]
+}}
+
+Return ONLY valid JSON. No markdown. No explanation."""
+
+
+# ---------------------------------------------------------------------------
 # Main handler
 # ---------------------------------------------------------------------------
 
@@ -565,6 +774,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     if not workflow_id:
         raise ValueError(f"workflowId missing from event: {event}")
+
+    # Detect if this is an adaptive replan invocation
+    is_replan = event.get("status") == "REPLAN_REQUIRED"
+    replan_attempt = event.get("replanAttempt", 0)
+    changed_files = event.get("changedFiles", [])
+    original_contract = event.get("originalContract", {})
+
+    if is_replan:
+        logger.info(
+            "Adaptive replanning started",
+            workflow_id=workflow_id,
+            replan_attempt=replan_attempt,
+            changed_files=changed_files,
+        )
 
     # Initialize services
     bedrock = BedrockClient(config.bedrock_model_id)
@@ -580,7 +803,64 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     architecture_knowledge = _load_architecture_knowledge(s3)
 
     # -----------------------------------------------------------------------
-    # Phase 1: Generate Engineering Contract
+    # Adaptive Replan Path
+    # -----------------------------------------------------------------------
+    if is_replan and changed_files and original_contract:
+        planning = _adaptive_replan(
+            bedrock=bedrock,
+            github=github,
+            event=event,
+            changed_files=changed_files,
+            original_contract=original_contract,
+            architecture_knowledge=architecture_knowledge,
+        )
+
+        # Preserve replan metadata in the event
+        planning["replanAttempt"] = replan_attempt
+        planning["replanReason"] = "FILE_CHANGED"
+        planning["replanChangedFiles"] = changed_files
+
+        # Version the contract: Plan v1 is the original, Plan vN is this replan
+        plan_version = replan_attempt + 1
+        planning["planVersion"] = plan_version
+
+        # Store this versioned plan separately (never overwrite v1)
+        s3.upload_json(f"plans/{workflow_id}-v{plan_version}.json", planning)
+
+        # Also store the original contract for reference (only on first replan)
+        if replan_attempt == 1:
+            s3.upload_json(f"plans/{workflow_id}-v1-original.json", event.get("planning", {}))
+
+        # Update recovery history
+        recovery_history = event.get("recoveryHistory", [])
+        # The last entry was added by Development Agent with status REPLANNING
+        # Update it to show planning completed
+        if recovery_history and recovery_history[-1].get("status") == "REPLANNING":
+            recovery_history[-1]["status"] = "REPLANNED"
+            recovery_history[-1]["planVersion"] = plan_version
+
+        planning["recoveryHistory"] = recovery_history
+
+        # Persist status
+        table.update_status(workflow_id=workflow_id, status="PLANNED", planning=planning)
+
+        event["planning"] = planning
+        event["status"] = "PLANNED"
+        event["replanAttempt"] = replan_attempt
+        event["recoveryHistory"] = recovery_history
+
+        logger.info(
+            "Adaptive replan complete",
+            workflow_id=workflow_id,
+            replan_attempt=replan_attempt,
+            plan_version=plan_version,
+            contract_files=len(planning.get("implementationContract", {}).get("files", [])),
+        )
+
+        return event
+
+    # -----------------------------------------------------------------------
+    # Phase 1: Generate Engineering Contract (normal path)
     # -----------------------------------------------------------------------
     try:
         planning = bedrock.converse_json(
@@ -670,14 +950,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # -----------------------------------------------------------------------
     # Persist and return
     # -----------------------------------------------------------------------
+    # Mark as Plan v1 (initial)
+    planning["planVersion"] = 1
+
     table.update_status(
         workflow_id=workflow_id,
         status="PLANNED",
         planning=planning,
     )
 
-    # Store plan artifact in S3
+    # Store plan artifact in S3 as v1
     s3.upload_json(f"plans/{workflow_id}.json", planning)
+    s3.upload_json(f"plans/{workflow_id}-v1.json", planning)
 
     # Enrich workflow event for next step
     event["planning"] = planning

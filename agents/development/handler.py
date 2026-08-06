@@ -340,10 +340,17 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             # Step 2: Verify SHA256
             # ---------------------------------------------------------------
             if not _verify_sha256(existing_code, expected_hash):
-                logger.error(
+                logger.warning(
                     "SHA256 mismatch — file changed since planning",
                     file_path=file_path,
                     expected_hash=expected_hash,
+                )
+                generated_files.append(
+                    {
+                        "path": file_path,
+                        "operation": operation,
+                        "status": "SHA_MISMATCH",
+                    }
                 )
                 aborted = True
                 abort_reason = f"FILE_CHANGED_REPLAN_REQUIRED: {file_path}"
@@ -464,9 +471,94 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("File committed", file_path=file_path, operation=operation)
 
     # -----------------------------------------------------------------------
-    # Handle abort
+    # Handle abort — structured response for adaptive replanning
     # -----------------------------------------------------------------------
     if aborted:
+        # Track which files had SHA mismatches
+        changed_files = [f["path"] for f in generated_files if f.get("status") == "SHA_MISMATCH"]
+
+        # If abort was due to file change, return REPLAN_REQUIRED
+        if "FILE_CHANGED" in abort_reason or "REPLAN" in abort_reason:
+            replan_attempt = event.get("replanAttempt", 0)
+
+            if replan_attempt >= 3:
+                logger.error(
+                    "Max replan attempts reached, manual review required",
+                    workflow_id=workflow_id,
+                    replan_attempt=replan_attempt,
+                )
+
+                table.update_status(
+                    workflow_id=workflow_id,
+                    status="MANUAL_REVIEW_REQUIRED",
+                    agent="development",
+                    artifacts={
+                        "reason": "MAX_REPLAN_ATTEMPTS_EXCEEDED",
+                        "replanAttempt": replan_attempt,
+                        "changedFiles": changed_files,
+                        "generatedFiles": generated_files,
+                    },
+                )
+
+                event["status"] = "MANUAL_REVIEW_REQUIRED"
+                event["currentAgent"] = "development"
+                event["artifacts"] = {
+                    "reason": "MAX_REPLAN_ATTEMPTS_EXCEEDED",
+                    "replanAttempt": replan_attempt,
+                    "changedFiles": changed_files,
+                    "generatedFiles": generated_files,
+                }
+                return event
+
+            # Return structured REPLAN_REQUIRED for Step Functions Choice
+            logger.info(
+                "Repository drift detected, requesting adaptive replan",
+                workflow_id=workflow_id,
+                changed_files=changed_files,
+                replan_attempt=replan_attempt + 1,
+            )
+
+            # Build recovery history entry for this attempt
+            recovery_entry = {
+                "attempt": replan_attempt + 1,
+                "reason": "SHA_MISMATCH",
+                "changedFiles": changed_files,
+                "status": "REPLANNING",
+            }
+
+            # Append to existing recovery history
+            recovery_history = event.get("recoveryHistory", [])
+            recovery_history.append(recovery_entry)
+
+            table.update_status(
+                workflow_id=workflow_id,
+                status="REPLAN_REQUIRED",
+                agent="development",
+                artifacts={
+                    "reason": "FILE_CHANGED",
+                    "changedFiles": changed_files,
+                    "replanAttempt": replan_attempt + 1,
+                    "generatedFiles": generated_files,
+                    "recoveryHistory": recovery_history,
+                },
+            )
+
+            event["status"] = "REPLAN_REQUIRED"
+            event["currentAgent"] = "development"
+            event["replanAttempt"] = replan_attempt + 1
+            event["changedFiles"] = changed_files
+            event["originalContract"] = contract
+            event["recoveryHistory"] = recovery_history
+            event["artifacts"] = {
+                "reason": "FILE_CHANGED",
+                "changedFiles": changed_files,
+                "replanAttempt": replan_attempt + 1,
+                "generatedFiles": generated_files,
+                "recoveryHistory": recovery_history,
+            }
+            return event
+
+        # Non-file-change abort (other errors)
         logger.error("Implementation aborted", workflow_id=workflow_id, reason=abort_reason)
 
         table.update_status(
@@ -538,6 +630,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         }
     )
 
+    # If this was a replan attempt, mark recovery as SUCCESS
+    recovery_history = event.get("recoveryHistory", [])
+    if recovery_history:
+        # Update the last entry status to SUCCESS
+        recovery_history[-1]["status"] = "SUCCESS"
+        artifacts["recoveryHistory"] = recovery_history
+
     # Store artifact in S3
     s3.upload_json(
         f"artifacts/{workflow_id}-generated-code.json",
@@ -561,6 +660,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     event["status"] = "DEVELOPMENT_COMPLETE"
     event["currentAgent"] = "development"
     event["artifacts"] = artifacts
+    # Always include replanAttempt for Step Functions consistency
+    event.setdefault("replanAttempt", 0)
 
     logger.info(
         "Development complete",

@@ -8,13 +8,13 @@ Endpoint: GET /dashboard
 """
 
 import json
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
+
+from service import DashboardService
 
 from shared.config import DashboardApiConfig
 from shared.logger import get_logger
-
-from service import DashboardService
 
 logger = get_logger(__name__, agent="dashboard-api")
 
@@ -43,14 +43,17 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     except Exception as ex:
         logger.error("Dashboard API error", error=str(ex), exc_info=True)
-        return _response(500, {
-            "error": "Internal server error",
-            "metadata": {
-                "generatedAt": datetime.now(UTC).isoformat(),
-                "dashboardVersion": DASHBOARD_VERSION,
-                "apiVersion": API_VERSION,
+        return _response(
+            500,
+            {
+                "error": "Internal server error",
+                "metadata": {
+                    "generatedAt": datetime.now(UTC).isoformat(),
+                    "dashboardVersion": DASHBOARD_VERSION,
+                    "apiVersion": API_VERSION,
+                },
             },
-        })
+        )
 
 
 def _response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
