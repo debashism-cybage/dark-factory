@@ -45,12 +45,21 @@ zip_directory() {
         return $?
     fi
 
-    if command -v python3 >/dev/null 2>&1; then
-        PY=python3
-    elif command -v python >/dev/null 2>&1; then
-        PY=python
-    else
-        echo "  ERROR: neither 'zip' nor 'python' is available to create the deployment package."
+    # Try candidates in order and verify each one ACTUALLY runs (not just
+    # present on PATH) before using it. On some Windows setups `python3` on
+    # PATH resolves to a launcher shim (e.g. PyManager) that points at a
+    # broken/uninstalled Python version, while `python` resolves to a
+    # working install — so presence on PATH alone isn't enough.
+    PY=""
+    for candidate in python python3; do
+        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" --version >/dev/null 2>&1; then
+            PY="$candidate"
+            break
+        fi
+    done
+
+    if [ -z "$PY" ]; then
+        echo "  ERROR: neither 'zip' nor a working 'python'/'python3' is available to create the deployment package."
         return 1
     fi
 
