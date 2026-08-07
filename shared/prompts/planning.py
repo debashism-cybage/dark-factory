@@ -188,7 +188,21 @@ def implementation_contract_system_prompt() -> str:
         "3. Choose CREATE only when absolutely no existing file is suitable.\n"
         "4. List files that must NOT be touched as protectedFiles.\n"
         "5. Be specific about what changes are expected in each file.\n"
-        "6. Return ONLY valid JSON. No markdown. No code fences.\n"
+        "6. INTEGRATION RULE (mandatory): a CREATE entry for a new UI component, "
+        "widget, tile, page, or route target is INCOMPLETE by itself. For every such "
+        "CREATE, you MUST also add a MODIFY entry for the existing parent/container "
+        "file (module declaration, standalone component's `imports` array, or parent "
+        "template) that will actually import, register, and render it. A component "
+        "that exists in the repo but is not referenced by any parent is considered "
+        "NOT implemented — never leave a newly created component unwired.\n"
+        "7. END-TO-END FLOW RULE (mandatory): for tickets involving authentication, "
+        "login, or navigation, you MUST plan the full chain, not just the entry point: "
+        "route configuration file, any guard protecting the target route, and the "
+        "component/service that triggers navigation after success (e.g. calls "
+        "Router.navigate). Include MODIFY entries for any of these that need changes "
+        "to complete the flow — a login that authenticates but never navigates is a "
+        "failed implementation.\n"
+        "8. Return ONLY valid JSON. No markdown. No code fences.\n"
     )
 
 
@@ -282,6 +296,23 @@ Based on the actual file contents above:
 3. For each MODIFY file, describe the specific expected changes.
 4. List files/areas that must NOT be touched as protectedFiles.
 5. Provide a validation checklist for the developer.
+6. INTEGRATION CHECK (do this for every CREATE entry): a newly created component,
+   tile, widget, page, or service is USELESS if nothing ever imports, declares, or
+   renders it. For each CREATE entry, identify the exact parent file(s) — the
+   containing page/dashboard template, the standalone component's `imports` array,
+   an NgModule's `declarations`/`imports`, or the routing file — and add a
+   corresponding MODIFY entry for that parent describing exactly how the new file
+   gets wired in (e.g. "add <app-recipe-tile> to the dashboard template" or
+   "add RecipeTileComponent to DashboardComponent's imports array"). Set
+   `integratesWith` on the CREATE entry to the path(s) of the parent file(s) that
+   will reference it. If you cannot identify a parent among the files shown above,
+   say so explicitly in `expectedChanges` rather than silently omitting it — do not
+   assume a component will render itself.
+7. END-TO-END FLOW CHECK (for auth/navigation tickets): trace login/navigation
+   requirements through to the route that must actually load afterward. If the
+   ticket implies "user should reach page X after action Y", verify (from the file
+   contents shown) whether the code that performs action Y calls router navigation,
+   and add a MODIFY entry if it doesn't.
 
 Return ONLY this JSON structure:
 
@@ -291,18 +322,24 @@ Return ONLY this JSON structure:
       "path": "exact/file/path.ext",
       "operation": "MODIFY",
       "reason": "Why this file needs changes",
-      "expectedChanges": ["Specific change 1", "Specific change 2"]
+      "expectedChanges": ["Specific change 1", "Specific change 2"],
+      "integratesWith": []
     }}
   ],
   "protectedFiles": ["files/that/must/not/change.ext"],
   "allowedOperations": ["MODIFY", "CREATE"],
-  "validationChecklist": ["Validation point 1", "Validation point 2"]
+  "validationChecklist": ["Validation point 1", "Validation point 2"],
+  "integrationSummary": "One sentence confirming every CREATE has a matching parent MODIFY, or explaining why none was needed"
 }}
 
 IMPORTANT:
 - Use EXACT file paths from the candidate list above.
 - For MODIFY operations, the file MUST exist in the candidates list.
-- For CREATE operations, provide the full intended path.
+- For CREATE operations, provide the full intended path, and set `integratesWith`
+  to the path(s) of the parent file(s) (also present in `files` as MODIFY entries)
+  that will import/declare/render it. Leave `integratesWith` as an empty list only
+  if the file genuinely has no parent to wire into (e.g. a standalone utility with
+  no UI surface).
 - Do NOT include files from avoidFileTypes.
 - protectedFiles should include files related to mustNotChange areas.
 

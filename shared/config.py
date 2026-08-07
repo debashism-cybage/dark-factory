@@ -90,6 +90,14 @@ class ValidationConfig(BaseConfig):
     table_name: str = field(default_factory=lambda: _require("TABLE_NAME"))
     bucket_name: str = field(default_factory=lambda: _require("BUCKET_NAME"))
     bedrock_model_id: str = field(default_factory=lambda: _require("BEDROCK_MODEL_ID"))
+    # GitHub access is optional for the validation agent: when configured, it lets
+    # the agent fetch actual file/parent content to verify integration (a new
+    # component is really referenced by its declared parent) instead of only
+    # reviewing file-status metadata. Falls back gracefully to metadata-only
+    # review if these are not set, so existing deployments keep working.
+    github_secret_name: str = field(default_factory=lambda: _optional("GITHUB_SECRET_NAME"))
+    github_repo_owner: str = field(default_factory=lambda: _optional("GITHUB_REPO_OWNER"))
+    github_repo_name: str = field(default_factory=lambda: _optional("GITHUB_REPO_NAME"))
 
 
 @dataclass(frozen=True)

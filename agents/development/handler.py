@@ -110,12 +110,27 @@ def _run_build_validation(
     github: GitHubClient,
     branch: str,
     generated_files: list[dict[str, Any]],
+    contract_files: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Run cross-file build validation using Bedrock.
 
     Checks that all imports resolve, modules are declared correctly,
-    and lazy-loaded routes point to existing files.
+    lazy-loaded routes point to existing files, AND — generically for every
+    ticket, not just special-cased ones — that any newly CREATED component is
+    actually referenced by the parent file(s) the Planning Agent declared via
+    `integratesWith` on the implementationContract. This is what catches a
+    component being created but never rendered (e.g. a dashboard tile that
+    exists on disk but was never added to the dashboard template).
+
+    Args:
+        bedrock: Initialized BedrockClient.
+        github: Initialized GitHubClient.
+        branch: Feature branch to read fresh content from.
+        generated_files: Files successfully generated/modified in this run.
+        contract_files: The full implementationContract file list (used to
+            look up each CREATE entry's declared `integratesWith` parents so
+            their CURRENT content can be fetched and checked).
 
     Returns:
         List of issues found (empty if all clear).
@@ -141,12 +156,38 @@ def _run_build_validation(
         except Exception:
             repo_file_paths = []
 
+        # Resolve declared parent/integration files for any CREATE entries so
+        # the LLM can check the new component is actually referenced there,
+        # instead of just trusting the plan's intent.
+        parent_files: list[dict[str, Any]] = []
+        if contract_files:
+            generated_paths = {f["path"] for f in generated_files}
+            parent_paths: set[str] = set()
+            for entry in contract_files:
+                if entry.get("operation") != "CREATE":
+                    continue
+                if entry.get("path") not in generated_paths:
+                    continue
+                for parent_path in entry.get("integratesWith", []) or []:
+                    parent_paths.add(parent_path)
+
+            for parent_path in parent_paths:
+                try:
+                    content = github.get_file_content(parent_path, branch)
+                    parent_files.append({"path": parent_path, "content": content})
+                except Exception:
+                    logger.warning(
+                        "Could not fetch declared parent file for integration check",
+                        parent_path=parent_path,
+                    )
+
         # Ask Bedrock to validate
         result = bedrock.converse_json(
             system_prompt=prompts.build_validation_system_prompt(),
             user_prompt=prompts.build_validation_user_prompt(
                 generated_files=files_with_content,
                 repository_files=repo_file_paths,
+                parent_files=parent_files or None,
             ),
             max_tokens=2048,
         )
@@ -548,6 +589,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             event["replanAttempt"] = replan_attempt + 1
             event["changedFiles"] = changed_files
             event["originalContract"] = contract
+            event["replanBranch"] = branch
             event["recoveryHistory"] = recovery_history
             event["artifacts"] = {
                 "reason": "FILE_CHANGED",
@@ -555,6 +597,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "replanAttempt": replan_attempt + 1,
                 "generatedFiles": generated_files,
                 "recoveryHistory": recovery_history,
+                "branch": branch,
             }
             return event
 
@@ -586,6 +629,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             github=github,
             branch=branch,
             generated_files=successful_files,
+            contract_files=contract_files,
         )
 
         if build_issues:

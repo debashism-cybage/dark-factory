@@ -244,13 +244,28 @@ Respond with ONLY: PASS or FAIL (with brief reason if FAIL)."""
 def build_validation_system_prompt() -> str:
     """System prompt for the cross-file build validation step."""
     return (
-        "You are a build engineer verifying that a set of code changes will compile.\n"
+        "You are a build engineer verifying that a set of code changes will compile "
+        "AND that every new piece of UI is actually wired into the running application.\n"
         "Check for:\n"
         "1. Import paths that reference non-existent files.\n"
         "2. Missing module imports (e.g., CommonModule for *ngIf).\n"
         "3. Routes that lazy-load components from non-existent paths.\n"
         "4. Type errors (referencing classes/interfaces that don't exist).\n"
-        "5. Missing exports that other files depend on.\n\n"
+        "5. Missing exports that other files depend on.\n"
+        "6. INTEGRATION CHECK (critical, do not skip): for every newly CREATED "
+        "component/directive/service, verify that at least one of its declared "
+        "'parent' files actually imports it AND references it — e.g. an Angular "
+        "component must appear in a parent's @Component.imports array AND be used "
+        "via its selector in that parent's template, or be registered in an "
+        "NgModule's declarations/imports, or be the target of a route. A file that "
+        "compiles in isolation but is never imported or rendered anywhere is a "
+        "FAILURE, even though it produces no compiler error — this exact bug has "
+        "shipped before (components created but not rendered on a dashboard).\n"
+        "7. NAVIGATION CHECK (for auth/login-related changes): if a login/auth "
+        "success handler is shown, verify it actually triggers router navigation "
+        "(e.g. calls Router.navigate/navigateByUrl or sets a redirect) rather than "
+        "just updating authentication state and stopping — auth succeeding without "
+        "navigation is a FAILURE.\n\n"
         "Respond with EXACTLY this JSON format:\n"
         '{"status": "PASS"}\n'
         "or\n"
@@ -262,25 +277,47 @@ def build_validation_system_prompt() -> str:
 def build_validation_user_prompt(
     generated_files: list[dict[str, Any]],
     repository_files: list[str],
+    parent_files: list[dict[str, Any]] | None = None,
 ) -> str:
     """
     Build the user prompt for cross-file build validation.
 
     Args:
-        generated_files: List of dicts with 'path' and 'content' keys.
+        generated_files: List of dicts with 'path' and 'content' keys — the
+            files the Development Agent generated/modified in this run.
         repository_files: List of existing file paths in the repository.
+        parent_files: List of dicts with 'path' and 'content' keys — the files
+            that CREATE entries declared as their integration point
+            (implementationContract's `integratesWith`), fetched fresh from the
+            branch so the LLM can verify the new component is actually
+            referenced there, not just assume it based on file names.
     """
     files_section = ""
     for f in generated_files:
         content_preview = f.get("content", "")[:2000]
         files_section += f"\n--- {f['path']} ---\n{content_preview}\n"
 
-    return f"""Verify that these code changes will compile without errors.
+    parents_section = ""
+    if parent_files:
+        parents_section = (
+            "\n--------------------------------------------------\n"
+            "DECLARED PARENT/INTEGRATION FILES (verify the new files above are\n"
+            "actually referenced somewhere in here)\n"
+            "--------------------------------------------------\n"
+        )
+        for f in parent_files:
+            content_preview = f.get("content", "")[:2000]
+            parents_section += f"\n--- {f['path']} ---\n{content_preview}\n"
+
+    return f"""Verify that these code changes will compile without errors AND that any
+newly created UI/components are actually integrated (imported + rendered/routed),
+not just created in isolation.
 
 --------------------------------------------------
 GENERATED/MODIFIED FILES
 --------------------------------------------------
 {files_section}
+{parents_section}
 --------------------------------------------------
 EXISTING REPOSITORY FILES (partial list)
 --------------------------------------------------
@@ -296,6 +333,15 @@ CHECK FOR
 3. Does any route lazy-load a component from a non-existent path?
 4. Does any file reference a class/interface that doesn't exist anywhere?
 5. Are all exported names used correctly in other files?
+6. For every newly CREATED component shown above: does at least one file in
+   DECLARED PARENT/INTEGRATION FILES actually import it AND use its selector in a
+   template (or declare/register it, or route to it)? If a new component has no
+   parent file provided, or the provided parent file does NOT actually reference
+   it, that is a FAIL — flag it with issue "component created but not integrated
+   into any parent" and fix "add <selector> to <parent file>'s template and import
+   the component in its imports array".
+7. If any generated file handles authentication success, does it call router
+   navigation afterward? If not, flag it as a FAIL.
 
 Return ONLY valid JSON:
 {{"status": "PASS"}}

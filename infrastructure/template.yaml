@@ -236,6 +236,12 @@ Resources:
           TABLE_NAME: !Ref WorkflowTable
           BUCKET_NAME: !Ref ArtifactBucket
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          # Optional: lets Validation Agent fetch actual file/parent content
+          # from the PR branch to verify integration, not just review metadata.
+          # Handler falls back to metadata-only review if these are unset.
+          GITHUB_SECRET_NAME: !Ref GitHubSecretName
+          GITHUB_REPO_OWNER: !Ref GitHubRepoOwner
+          GITHUB_REPO_NAME: !Ref GitHubRepoName
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref WorkflowTable
@@ -247,6 +253,10 @@ Resources:
                 - bedrock:InvokeModel
                 - bedrock:Converse
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GitHubSecretName}*
 
   ReleaseAgentFunction:
     Type: AWS::Serverless::Function

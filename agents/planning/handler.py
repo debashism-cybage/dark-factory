@@ -33,8 +33,33 @@ logger = get_logger(__name__, agent="planning")
 # Maximum candidate files to download from the repository
 MAX_CANDIDATE_FILES = 10
 
-# Maximum files whose content is sent to the LLM for contract generation
-MAX_FILES_FOR_CONTRACT = 5
+# Maximum files whose content is sent to the LLM for contract generation.
+# Bumped from 5 to 8 to make room for integration-hub files (below) without
+# starving out the keyword-matched candidates that are usually most relevant.
+MAX_FILES_FOR_CONTRACT = 8
+
+# File name fragments that almost always act as "integration hubs" — routing
+# config, root/shell/dashboard containers, and app modules. When a ticket adds
+# or changes UI (new component/tile/page) or touches auth/navigation, these
+# files MUST be considered as candidates even if they don't match ticket
+# keywords, otherwise the LLM never sees the parent that needs to render/route
+# the new piece and it ends up created but never wired in (see SCRUM-16).
+INTEGRATION_HUB_HINTS = [
+    "app.routes",
+    "app-routing",
+    "routing.module",
+    "app.module",
+    "app.component",
+    "dashboard.component",
+    "home.component",
+    "main-layout",
+    "shell.component",
+    "layout.component",
+    "nav",
+]
+
+# Maximum number of hub files force-included regardless of keyword score
+MAX_HUB_CANDIDATES = 5
 
 # Valid values for enum-like fields (used for validation/defaults)
 VALID_CHANGE_TYPES = {
@@ -161,22 +186,78 @@ def _extract_keywords(event: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _find_integration_hub_candidates(
+    github: GitHubClient,
+    change_type: str,
+) -> list[str]:
+    """
+    Find "integration hub" files that should always be considered as planning
+    candidates for UI/navigation-affecting tickets, regardless of keyword match.
+
+    Rationale: a new component/tile/page is only "done" if some existing parent
+    (routing config, app module, dashboard/home container) actually references
+    it. Pure keyword search over file paths can easily miss that parent if its
+    name doesn't share words with the ticket text (e.g. ticket says "Recipe
+    tile", parent file is "dashboard.component.ts"). Missing that parent is
+    exactly what caused SCRUM-16 (tiles created but never rendered) and
+    contributed to SCRUM-9 (login worked but never navigated home).
+
+    Only applies for NEW_FEATURE/ENHANCEMENT changes — bug fixes / config /
+    docs changes don't need this widening.
+
+    Args:
+        github: Initialized GitHubClient.
+        change_type: The Engineering Contract's changeType.
+
+    Returns:
+        List of matching file paths (capped at MAX_HUB_CANDIDATES).
+    """
+    if change_type not in ("NEW_FEATURE", "ENHANCEMENT"):
+        return []
+
+    try:
+        all_files = github.get_all_files()
+    except Exception as ex:
+        logger.warning("Could not list repo files for hub search", error=str(ex))
+        return []
+
+    hub_paths: list[str] = []
+    for item in all_files:
+        path = item.get("path", "")
+        path_lower = path.lower()
+        if any(hint in path_lower for hint in INTEGRATION_HUB_HINTS):
+            hub_paths.append(path)
+        if len(hub_paths) >= MAX_HUB_CANDIDATES:
+            break
+
+    if hub_paths:
+        logger.info("Integration hub candidates found", hub_paths=hub_paths)
+
+    return hub_paths
+
+
 def _search_repository(
     github: GitHubClient,
     keywords: list[str],
     candidate_modules: list[str],
     expected_file_types: list[str],
+    change_type: str = "",
 ) -> list[str]:
     """
     Search the repository for relevant files using keywords and module names.
 
-    Combines keyword search results with module-based search.
+    Combines keyword search results with module-based search, and always
+    force-includes known "integration hub" files (routing, app module,
+    dashboard/home containers) for UI-affecting tickets so the Planning Agent
+    can see — and plan to modify — the parent that must wire in new components.
 
     Args:
         github: Initialized GitHubClient.
         keywords: Keywords extracted from the ticket.
         candidate_modules: Logical module names from the Engineering Contract.
         expected_file_types: Expected file extensions from the Engineering Contract.
+        change_type: The Engineering Contract's changeType, used to decide
+            whether integration-hub widening applies.
 
     Returns:
         Deduplicated list of candidate file paths (max MAX_CANDIDATE_FILES).
@@ -211,14 +292,25 @@ def _search_repository(
             if len(candidate_paths) >= MAX_CANDIDATE_FILES:
                 break
 
+    # Always force-include integration hub files for UI/navigation tickets.
+    # These are PREPENDED (not appended) so that _download_candidates, which
+    # only downloads the first MAX_FILES_FOR_CONTRACT paths, is guaranteed to
+    # fetch them and show their content to the LLM — a hub file that's present
+    # in the candidate list but never downloaded is just as useless as one
+    # that was never found at all.
+    hub_paths = _find_integration_hub_candidates(github, change_type)
+    ordered_paths = [p for p in hub_paths if p not in candidate_paths]
+    ordered_paths.extend(candidate_paths)
+
     logger.info(
         "Repository search complete",
         keyword_count=len(all_keywords),
-        candidates_found=len(candidate_paths),
-        candidates=candidate_paths[:MAX_CANDIDATE_FILES],
+        candidates_found=len(ordered_paths),
+        hub_candidates=len(hub_paths),
+        candidates=ordered_paths,
     )
 
-    return candidate_paths[:MAX_CANDIDATE_FILES]
+    return ordered_paths
 
 
 # ---------------------------------------------------------------------------
@@ -365,9 +457,36 @@ def _validate_implementation_contract(contract: dict[str, Any]) -> dict[str, Any
             entry["reason"] = ""
         if not isinstance(entry.get("expectedChanges"), list):
             entry["expectedChanges"] = []
+        if not isinstance(entry.get("integratesWith"), list):
+            entry["integratesWith"] = []
         validated_files.append(entry)
 
     contract["files"] = validated_files
+
+    # Generic orphan-CREATE detection (applies to every ticket, not just this one):
+    # if the LLM created a new file but never listed a parent file that
+    # integrates with it, and no MODIFY entry in the same contract exists,
+    # flag it loudly in the validation checklist so the Development Agent's
+    # self-review and build validation stay alert to it, and so it's visible
+    # in logs/dashboard for human review even if the LLM never catches it.
+    modify_paths = {f["path"] for f in validated_files if f.get("operation") == "MODIFY"}
+    for entry in validated_files:
+        if entry.get("operation") != "CREATE":
+            continue
+        integrates_with = entry.get("integratesWith") or []
+        has_wiring_modify = any(p in modify_paths for p in integrates_with)
+        if not integrates_with or not has_wiring_modify:
+            logger.warning(
+                "CREATE entry has no confirmed parent integration — "
+                "component may end up created but never rendered/registered",
+                path=entry["path"],
+                integrates_with=integrates_with,
+            )
+            contract["validationChecklist"].append(
+                f"VERIFY INTEGRATION: '{entry['path']}' is newly created — confirm it is "
+                f"actually imported/declared/rendered by a parent file before merging."
+            )
+
     return contract
 
 
@@ -568,8 +687,8 @@ def _adaptive_replan(
     Perform adaptive replanning for files that changed since the original plan.
 
     Instead of re-planning the entire ticket, this:
-    1. Downloads fresh content of the changed files.
-    2. Computes new SHA256 hashes.
+    1. Downloads fresh content of the changed files FROM THE FEATURE BRANCH.
+    2. Computes new SHA256 hashes from the feature branch.
     3. Asks the LLM to produce an updated implementationContract
        that accounts for the new file state.
     4. Preserves all unchanged decisions from the original contract.
@@ -587,23 +706,33 @@ def _adaptive_replan(
     """
     replan_attempt = event.get("replanAttempt", 1)
 
+    # Use the feature branch that Development Agent was working on
+    target_branch = event.get("replanBranch", "main")
+
     logger.info(
-        "Adaptive replan: downloading fresh file content",
+        "Adaptive replan: downloading fresh file content from feature branch",
         changed_files=changed_files,
         replan_attempt=replan_attempt,
+        target_branch=target_branch,
     )
 
-    # Download fresh content of changed files
+    # Download fresh content of changed files FROM THE FEATURE BRANCH
     fresh_contents: dict[str, str] = {}
     fresh_hashes: dict[str, str] = {}
 
     for path in changed_files:
         try:
-            content = github.get_file_content(path)
+            content = github.get_file_content(path, branch=target_branch)
             fresh_contents[path] = content
             fresh_hashes[path] = sha256(content.encode("utf-8")).hexdigest()
-        except Exception as ex:
-            logger.warning("Could not download changed file", path=path, error=str(ex))
+        except Exception:
+            # Fallback to main if file doesn't exist on feature branch
+            try:
+                content = github.get_file_content(path)
+                fresh_contents[path] = content
+                fresh_hashes[path] = sha256(content.encode("utf-8")).hexdigest()
+            except Exception as ex:
+                logger.warning("Could not download changed file", path=path, error=str(ex))
 
     # Get original files from the contract that did NOT change
     original_files = original_contract.get("files", [])
@@ -653,6 +782,17 @@ def _adaptive_replan(
                 entry["sha256"] = fresh_hashes[path]
 
     # Merge: unchanged files keep their original entries, changed files get updated
+    # Also refresh SHA256 for unchanged MODIFY files from the feature branch
+    for entry in unchanged_files:
+        path = entry.get("path", "")
+        if entry.get("operation") == "MODIFY" and path:
+            try:
+                content = github.get_file_content(path, branch=target_branch)
+                entry["sha256"] = sha256(content.encode("utf-8")).hexdigest()
+            except Exception:
+                # Keep original hash if we can't read from feature branch
+                pass
+
     merged_files = unchanged_files + updated_files
 
     # Rebuild the implementation contract
@@ -916,6 +1056,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         keywords=keywords,
         candidate_modules=planning.get("candidateModules", []),
         expected_file_types=planning.get("expectedFileTypes", []),
+        change_type=planning.get("changeType", ""),
     )
 
     # Download top candidate files
