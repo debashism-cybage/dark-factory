@@ -31,6 +31,40 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---------------------------------------------------------------------------
 # Functions
 # ---------------------------------------------------------------------------
+
+# Zip a directory's contents into a zip file, without requiring the `zip`
+# CLI to be installed. Git Bash on Windows does not ship `zip` by default,
+# so fall back to Python's stdlib zipfile module (Python is already a
+# required dependency of this project) when `zip` isn't on PATH.
+zip_directory() {
+    local src_dir="$1"
+    local zip_path="$2"
+
+    if command -v zip >/dev/null 2>&1; then
+        (cd "$src_dir" && zip -qr "$zip_path" .)
+        return $?
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        PY=python3
+    elif command -v python >/dev/null 2>&1; then
+        PY=python
+    else
+        echo "  ERROR: neither 'zip' nor 'python' is available to create the deployment package."
+        return 1
+    fi
+
+    "$PY" -c "
+import os, sys, zipfile
+src_dir, zip_path = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, _dirs, files in os.walk(src_dir):
+        for f in files:
+            full_path = os.path.join(root, f)
+            arcname = os.path.relpath(full_path, src_dir)
+            zf.write(full_path, arcname)
+" "$src_dir" "$zip_path"
+}
 deploy_lambda() {
     local name="$1"
     local config="${LAMBDA_MAP[$name]}"
@@ -67,7 +101,11 @@ deploy_lambda() {
 
     # Zip
     local zipfile="$DEPLOY_DIR/$name.zip"
-    (cd "$staging" && zip -qr "../$name.zip" .)
+    local zipfile_abs="$(cd "$DEPLOY_DIR" && pwd)/$name.zip"
+    if ! zip_directory "$staging" "$zipfile_abs"; then
+        echo "  ERROR: failed to create deployment package"
+        return 1
+    fi
 
     local size=$(du -k "$zipfile" | cut -f1)
     echo "  Package size: ${size} KB"

@@ -21,6 +21,7 @@ Input: Workflow event with 'planning.implementationContract' (from Planning Agen
 Output: Workflow event enriched with 'artifacts' and status 'DEVELOPMENT_COMPLETE'.
 """
 
+import contextlib
 from hashlib import sha256
 from typing import Any
 
@@ -31,8 +32,14 @@ from shared.github_client import GitHubClient
 from shared.logger import get_logger
 from shared.prompts import development as prompts
 from shared.s3_helper import S3Helper
+from shared.ts_static_check import check_typescript_integrity
 
 logger = get_logger(__name__, agent="development")
+
+# Extensions the deterministic TypeScript/Angular static checker applies to.
+# Kept narrow on purpose: the checker's import/export/member regexes are only
+# meaningful for TS/JS-family source.
+_TS_CHECK_EXTENSIONS = (".ts", ".tsx", ".js", ".jsx")
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +105,81 @@ def _self_review(
     except Exception as ex:
         logger.warning("Self-review failed, defaulting to PASS", error=str(ex))
         return "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Deterministic static check (non-LLM)
+# ---------------------------------------------------------------------------
+
+
+def _run_static_ts_check(
+    github: GitHubClient,
+    branch: str,
+    generated_files: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Run a deterministic, regex-based cross-reference check over the changeset
+    to catch the exact class of errors a real TypeScript compiler flags:
+    unresolved relative imports (TS2307), named imports/dynamic-import
+    members that don't actually exist on the target module (TS2339), and
+    property accesses on injected services that don't match the service's
+    real members (TS2339/TS2551).
+
+    This exists because the LLM-based build validation below is a text
+    reviewer, not a compiler — it repeatedly misses exactly these mistakes
+    (wrong import path, wrong export/member name) because they require
+    precise cross-file lookups rather than judgment. This check is grounded
+    in real repository file content, not an LLM's read of it, so it runs
+    identically and reliably for every ticket.
+
+    Returns:
+        List of issues in the same {"file", "issue", "fix"} shape used by
+        the LLM-based build validation, so both feed the same auto-fix loop.
+    """
+    try:
+        files_with_content: dict[str, str] = {}
+        for f in generated_files:
+            path = f["path"]
+            with contextlib.suppress(Exception):
+                files_with_content[path] = github.get_file_content(path, branch)
+
+        if not files_with_content:
+            return []
+
+        try:
+            known_paths = {item["path"] for item in github.get_all_files(branch)}
+        except Exception:
+            known_paths = set()
+        known_paths.update(files_with_content.keys())
+
+        def fetch_content(path: str) -> str | None:
+            try:
+                return github.get_file_content(path, branch)
+            except Exception:
+                return None
+
+        # Only run the checker's regex machinery against TS/JS files — it's
+        # not meaningful for HTML/CSS/JSON/etc.
+        ts_files = {p: c for p, c in files_with_content.items() if p.endswith(_TS_CHECK_EXTENSIONS)}
+        if not ts_files:
+            return []
+
+        issues = check_typescript_integrity(
+            files=ts_files,
+            known_paths=known_paths,
+            fetch_content=fetch_content,
+        )
+
+        if issues:
+            logger.info("Static TS check found issues", issue_count=len(issues), issues=issues)
+        else:
+            logger.info("Static TS check PASSED")
+
+        return issues
+
+    except Exception as ex:
+        logger.warning("Static TS check failed to execute", error=str(ex))
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -622,24 +704,76 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     successful_files = [f for f in generated_files if f.get("status") == "SUCCESS"]
 
     if successful_files:
-        logger.info("Running build validation", file_count=len(successful_files))
+        # max_fix_rounds bounds re-validation: after each round of fixes, we
+        # re-run BOTH checks against the (now patched) files, because a fix
+        # for one issue can introduce or reveal another. This closes the gap
+        # where the old auto-fix loop was single-shot with no re-verification
+        # — it would commit a "fix" and never confirm it actually resolved
+        # the problem.
+        max_fix_rounds = 2
+        fixes_per_round = 4
 
-        build_issues = _run_build_validation(
-            bedrock=bedrock,
-            github=github,
-            branch=branch,
-            generated_files=successful_files,
-            contract_files=contract_files,
-        )
+        for round_num in range(max_fix_rounds + 1):
+            files_to_check = [
+                f for f in generated_files if f.get("status") in ("SUCCESS", "BUILD_FIX")
+            ]
 
-        if build_issues:
+            logger.info(
+                "Running build validation",
+                round=round_num,
+                file_count=len(files_to_check),
+            )
+
+            # Deterministic check first — it is grounded in real repo content
+            # and catches the exact bugs that have shipped before (bad import
+            # paths, wrong export/member names) without any LLM guesswork.
+            static_issues = _run_static_ts_check(
+                github=github,
+                branch=branch,
+                generated_files=files_to_check,
+            )
+
+            # LLM-based check catches things regex can't (CommonModule
+            # missing, integration/rendering wiring, navigation-after-auth).
+            llm_issues = _run_build_validation(
+                bedrock=bedrock,
+                github=github,
+                branch=branch,
+                generated_files=files_to_check,
+                contract_files=contract_files,
+            )
+
+            # Merge and de-duplicate by (file, issue) so the same problem
+            # reported by both checkers doesn't get "fixed" twice.
+            seen: set[tuple[str, str]] = set()
+            build_issues: list[dict[str, Any]] = []
+            for issue in static_issues + llm_issues:
+                key = (issue.get("file", ""), issue.get("issue", ""))
+                if key in seen:
+                    continue
+                seen.add(key)
+                build_issues.append(issue)
+
+            if not build_issues:
+                logger.info("Build validation clean", round=round_num)
+                break
+
+            if round_num == max_fix_rounds:
+                logger.warning(
+                    "Build validation still has issues after max fix rounds, "
+                    "leaving them for the Validation Agent / GitHub Actions to catch",
+                    issue_count=len(build_issues),
+                    issues=build_issues,
+                )
+                break
+
             logger.warning(
                 "Build validation found issues, attempting fixes",
+                round=round_num,
                 issue_count=len(build_issues),
             )
 
-            # Attempt to fix each issue
-            for issue in build_issues[:3]:  # Limit to 3 fixes per run
+            for issue in build_issues[:fixes_per_round]:
                 fixed = _attempt_build_fix(
                     bedrock=bedrock,
                     github=github,
