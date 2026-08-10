@@ -287,6 +287,81 @@ def _run_build_validation(
         return []
 
 
+_INTEGRATION_ISSUE_MARKERS = (
+    "not integrated into any parent",
+    "never injected",
+    "never used",
+    "never imported",
+    "never called",
+    "created but not",
+)
+
+
+def _redirect_integration_issue_to_parent(
+    issue: dict[str, Any],
+    contract_files: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Correct a common LLM mistake in build-validation issues: reporting a
+    "component/service created but never wired into its parent" problem
+    against the CHILD file's path instead of the PARENT file that is
+    actually missing the import/injection/selector usage.
+
+    Why this matters: `_attempt_build_fix` (and its caller) blindly rewrite
+    whichever path is in issue["file"]. If that's the child, the fix loop
+    repeatedly regenerates an already-correct file while the real broken
+    parent (e.g. the page component that never imports the child or never
+    calls the service) is left completely untouched — this is exactly what
+    happened on SCRUM-10 and SCRUM-14: `recipe-card.ts`/`exercise-card.ts`
+    got "fixed" three times each while `recipes.ts`/`exercises.ts` — the
+    file that actually needed the import and the API call — was never
+    touched by the fix loop at all.
+
+    This is a deterministic backstop for when the LLM doesn't follow the
+    build-validation prompt's instruction to report the parent: if the
+    issue text matches an integration-failure pattern AND the implementation
+    contract declares an `integratesWith` parent for the reported file, the
+    issue is redirected to that parent path instead.
+
+    Args:
+        issue: A single issue dict from build validation (static or LLM).
+        contract_files: The full implementationContract file list, used to
+            look up the reported file's declared `integratesWith` parent.
+
+    Returns:
+        The issue dict, with "file" replaced by the parent path if this was
+        an integration-failure issue reported against a child with a known
+        parent. Otherwise returned unchanged.
+    """
+    issue_text = (issue.get("issue", "") or "").lower()
+    if not any(marker in issue_text for marker in _INTEGRATION_ISSUE_MARKERS):
+        return issue
+
+    reported_path = issue.get("file", "")
+    for entry in contract_files:
+        if entry.get("path") != reported_path:
+            continue
+        if entry.get("operation") != "CREATE":
+            continue
+        parents = entry.get("integratesWith") or []
+        if not parents:
+            continue
+        parent_path = parents[0]
+        if parent_path == reported_path:
+            continue
+        logger.info(
+            "Redirecting integration-failure issue from child to its declared parent",
+            child=reported_path,
+            parent=parent_path,
+            issue=issue.get("issue", ""),
+        )
+        redirected = dict(issue)
+        redirected["file"] = parent_path
+        return redirected
+
+    return issue
+
+
 def _attempt_create_missing_module(
     bedrock: BedrockClient,
     github: GitHubClient,
@@ -675,25 +750,57 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 review_result=review_result,
             )
 
-            # One retry
-            generated_code = bedrock.converse(
-                system_prompt=sys_prompt,
-                user_prompt=user_msg,
-                max_tokens=8192,
-            )
+            # Retry up to 2 times, feeding back the SPECIFIC review failure
+            # each time (not just re-running the identical prompt, which
+            # reliably reproduces the identical failure — this is exactly
+            # what happened on SCRUM-10/SCRUM-14: the LLM's output was
+            # truncated mid-method, the retry used the same prompt with no
+            # mention of truncation, and it truncated again).
+            max_regen_attempts = 2
+            for attempt in range(1, max_regen_attempts + 1):
+                retry_msg = (
+                    f"{user_msg}\n\n"
+                    f"--------------------------------------------------\n"
+                    f"PREVIOUS ATTEMPT REJECTED (attempt {attempt}/{max_regen_attempts})\n"
+                    f"--------------------------------------------------\n"
+                    f"Your previous response failed review for this reason:\n"
+                    f"{review_result}\n\n"
+                    f"Fix this specific problem. If the previous response was cut off "
+                    f"or incomplete, make sure this response is the COMPLETE file from "
+                    f"start to finish, including the closing brace/tag and every method "
+                    f"body fully implemented — do not stop partway through."
+                )
 
-            review_result = _self_review(
-                bedrock=bedrock,
-                event=event,
-                file_entry=file_entry,
-                generated_code=generated_code,
-                existing_code=existing_code,
-                protected_files=protected_files,
-            )
+                generated_code = bedrock.converse(
+                    system_prompt=sys_prompt,
+                    user_prompt=retry_msg,
+                    max_tokens=8192,
+                )
+
+                review_result = _self_review(
+                    bedrock=bedrock,
+                    event=event,
+                    file_entry=file_entry,
+                    generated_code=generated_code,
+                    existing_code=existing_code,
+                    protected_files=protected_files,
+                )
+
+                if review_result == "PASS":
+                    break
 
             if review_result != "PASS":
+                # This file is a hard failure, not a soft skip. Silently
+                # "continuing" here is exactly what shipped SCRUM-10 and
+                # SCRUM-14 broken: the hub page file that wires the API/
+                # service/component together failed review and got skipped,
+                # leaving the original placeholder in the PR with no visible
+                # signal until a human clicked through GitHub Actions. Abort
+                # the whole run instead so the workflow surfaces as a clear
+                # failure state rather than a silently-incomplete PR.
                 logger.error(
-                    "Self-review FAILED after retry, skipping file",
+                    "Self-review FAILED after all retries, aborting workflow "
+                    "rather than shipping a PR with this file left unimplemented",
                     file_path=file_path,
                     review_result=review_result,
                 )
@@ -705,7 +812,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                         "reason": review_result,
                     }
                 )
-                continue
+                aborted = True
+                abort_reason = f"REVIEW_FAILED_UNRECOVERABLE: {file_path}: {review_result}"
+                break
 
         # ---------------------------------------------------------------
         # Step 5: Commit to GitHub
@@ -911,6 +1020,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
 
             for issue in build_issues[:fixes_per_round]:
+                issue = _redirect_integration_issue_to_parent(issue, contract_files)
+
                 # MISSING_MODULE issues (from the deterministic checker) mean
                 # the imported file doesn't exist at all — patching the
                 # importer can never fix that; the missing file itself must

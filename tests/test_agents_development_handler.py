@@ -1,19 +1,150 @@
 """
-Tests for the Development Agent handler's build-fix routing.
+Tests for the Development Agent handler's build-fix routing and self-review
+failure handling.
 
-Focus: the MISSING_MODULE fix path added to close the SCRUM-10 gap, where
-`_attempt_build_fix` could only ever patch the *importing* file and had no
-way to create a dependency that was never planned or generated. Two prior
-auto-fix commits on that ticket just toggled the broken import path between
-two equally-nonexistent files because of this gap.
+Focus areas:
+1. The MISSING_MODULE fix path added to close the SCRUM-10 gap, where
+   `_attempt_build_fix` could only ever patch the *importing* file and had
+   no way to create a dependency that was never planned or generated.
+2. The parent-vs-child misattribution bug (also SCRUM-10/SCRUM-14): build
+   validation correctly detected "not integrated into any parent" but
+   reported the child file instead of the parent that needed the fix.
+3. The silent-skip-on-review-failure bug (SCRUM-10/SCRUM-14 root cause):
+   when self-review failed twice (e.g. truncated generation), the file was
+   silently skipped and the PR was opened anyway with the original
+   placeholder untouched. This must now abort the workflow instead.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from agents.development.handler import (
     _attempt_build_fix,
     _attempt_create_missing_module,
+    _redirect_integration_issue_to_parent,
+    lambda_handler,
 )
+
+
+class TestLambdaHandlerAbortsOnUnrecoverableReviewFailure:
+    """
+    Reproduces the SCRUM-10/SCRUM-14 root cause end-to-end: the hub page
+    file (the one that wires the API/service/child component together)
+    fails self-review twice in a row (e.g. truncated generation) and must
+    now cause the workflow to abort with no PR created — not silently ship
+    a PR containing the untouched original placeholder.
+    """
+
+    def _event(self):
+        return {
+            "workflowId": "WF-TEST",
+            "ticketId": "SCRUM-99",
+            "summary": "Implement Widgets Dashboard using API",
+            "planning": {
+                "implementationContract": {
+                    "files": [
+                        {
+                            "path": "src/app/widgets/widgets.ts",
+                            "operation": "MODIFY",
+                            "expectedChanges": ["Fetch and display widgets from the API"],
+                            "sha256": None,
+                        }
+                    ],
+                    "protectedFiles": [],
+                    "validationChecklist": [],
+                }
+            },
+        }
+
+    @patch("agents.development.handler.S3Helper")
+    @patch("agents.development.handler.WorkflowTable")
+    @patch("agents.development.handler.BedrockClient")
+    @patch("agents.development.handler.GitHubClient")
+    @patch("agents.development.handler.DevelopmentConfig")
+    @patch("agents.development.handler._self_review")
+    def test_aborts_without_creating_pr_when_review_fails_after_all_retries(
+        self,
+        mock_self_review,
+        mock_config_cls,
+        mock_github_cls,
+        mock_bedrock_cls,
+        mock_table_cls,
+        mock_s3_cls,
+    ):
+        mock_config_cls.return_value = MagicMock(
+            github_repo_owner="owner",
+            github_repo_name="repo",
+            github_secret_name="secret",
+            bedrock_model_id="model",
+            bucket_name="bucket",
+            table_name="table",
+        )
+
+        github = mock_github_cls.return_value
+        github.ensure_branch.return_value = None
+        github.get_file_content.return_value = "export class WidgetsComponent {}"
+
+        bedrock = mock_bedrock_cls.return_value
+        bedrock.converse.return_value = "export class WidgetsComponent { /* truncated"
+
+        # Every self-review call fails, simulating persistent truncation.
+        mock_self_review.return_value = "FAIL: generated code is truncated/incomplete"
+
+        result = lambda_handler(self._event(), context=None)
+
+        assert result["status"] == "DEVELOPMENT_ABORTED"
+        assert "REVIEW_FAILED_UNRECOVERABLE" in result["artifacts"]["reason"]
+        # No PR should ever be created for an unimplemented hub file.
+        github.ensure_pull_request.assert_not_called()
+
+    @patch("agents.development.handler.S3Helper")
+    @patch("agents.development.handler.WorkflowTable")
+    @patch("agents.development.handler.BedrockClient")
+    @patch("agents.development.handler.GitHubClient")
+    @patch("agents.development.handler.DevelopmentConfig")
+    @patch("agents.development.handler._self_review")
+    def test_retry_prompt_includes_previous_failure_reason(
+        self,
+        mock_self_review,
+        mock_config_cls,
+        mock_github_cls,
+        mock_bedrock_cls,
+        mock_table_cls,
+        mock_s3_cls,
+    ):
+        # First review fails, second (retry) passes. The retry's user_prompt
+        # sent to Bedrock must reference the specific failure reason, not
+        # just re-send the identical original prompt (which reproduces the
+        # identical failure, as happened on SCRUM-10/SCRUM-14).
+        mock_config_cls.return_value = MagicMock(
+            github_repo_owner="owner",
+            github_repo_name="repo",
+            github_secret_name="secret",
+            bedrock_model_id="model",
+            bucket_name="bucket",
+            table_name="table",
+        )
+
+        github = mock_github_cls.return_value
+        github.ensure_branch.return_value = None
+        github.get_file_content.return_value = "export class WidgetsComponent {}"
+        github.ensure_pull_request.return_value = {"number": 1, "url": "http://pr/1"}
+
+        bedrock = mock_bedrock_cls.return_value
+        bedrock.converse.return_value = "export class WidgetsComponent {}"
+
+        mock_self_review.side_effect = [
+            "FAIL: generated code is truncated/incomplete",
+            "PASS",
+        ]
+
+        result = lambda_handler(self._event(), context=None)
+
+        assert result["status"] == "DEVELOPMENT_COMPLETE"
+        # Second call to bedrock.converse is the retry — check it references
+        # the failure reason so the model gets specific corrective feedback.
+        retry_call_kwargs = bedrock.converse.call_args_list[1].kwargs
+        assert "truncated/incomplete" in retry_call_kwargs["user_prompt"]
+        assert "PREVIOUS ATTEMPT REJECTED" in retry_call_kwargs["user_prompt"]
 
 
 class TestAttemptCreateMissingModule:
@@ -117,6 +248,100 @@ class TestAttemptCreateMissingModule:
         )
 
         assert result is None
+
+
+class TestRedirectIntegrationIssueToParent:
+    """
+    Tests for the SCRUM-10/SCRUM-14 misattribution bug: build validation
+    correctly detected "component/service created but not integrated into
+    any parent", but the LLM reported the CHILD file as the fix target
+    instead of the PARENT that actually needed the import/injection added.
+    This caused three rounds of fixes to repeatedly regenerate an
+    already-correct child component while the real broken parent (the page
+    that should call the service and render the child) was never touched.
+    """
+
+    def _contract_files(self):
+        return [
+            {
+                "path": "src/app/recipes/recipe-card/recipe-card.ts",
+                "operation": "CREATE",
+                "integratesWith": ["src/app/recipes/recipes.ts"],
+            },
+            {
+                "path": "src/app/services/recipes.service.ts",
+                "operation": "CREATE",
+                "integratesWith": ["src/app/recipes/recipes.ts"],
+            },
+            {
+                "path": "src/app/recipes/recipes.ts",
+                "operation": "MODIFY",
+                "integratesWith": [],
+            },
+        ]
+
+    def test_redirects_child_component_issue_to_declared_parent(self):
+        issue = {
+            "file": "src/app/recipes/recipe-card/recipe-card.ts",
+            "issue": (
+                "component created but not integrated into any parent — "
+                "RecipesComponent does not import RecipeCardComponent"
+            ),
+            "fix": "add <app-recipe-card> to the parent template",
+        }
+
+        result = _redirect_integration_issue_to_parent(issue, self._contract_files())
+
+        assert result["file"] == "src/app/recipes/recipes.ts"
+
+    def test_redirects_child_service_issue_to_declared_parent(self):
+        issue = {
+            "file": "src/app/services/recipes.service.ts",
+            "issue": "RecipesService is created but never injected or used in any component shown",
+            "fix": "inject RecipesService into RecipesComponent",
+        }
+
+        result = _redirect_integration_issue_to_parent(issue, self._contract_files())
+
+        assert result["file"] == "src/app/recipes/recipes.ts"
+
+    def test_leaves_non_integration_issue_unchanged(self):
+        issue = {
+            "file": "src/app/recipes/recipe-card/recipe-card.ts",
+            "issue": "Property 'bar' does not exist on type 'Recipe'",
+            "fix": "use an existing member",
+        }
+
+        result = _redirect_integration_issue_to_parent(issue, self._contract_files())
+
+        assert result["file"] == "src/app/recipes/recipe-card/recipe-card.ts"
+
+    def test_leaves_issue_unchanged_when_no_parent_declared(self):
+        issue = {
+            "file": "src/app/utils/helper.ts",
+            "issue": "helper created but not integrated into any parent",
+            "fix": "use it somewhere",
+        }
+        contract_files = [
+            {"path": "src/app/utils/helper.ts", "operation": "CREATE", "integratesWith": []},
+        ]
+
+        result = _redirect_integration_issue_to_parent(issue, contract_files)
+
+        assert result["file"] == "src/app/utils/helper.ts"
+
+    def test_leaves_issue_unchanged_when_file_already_is_parent(self):
+        # If the LLM already correctly reported the parent (a MODIFY entry,
+        # not a CREATE entry), there's nothing to redirect.
+        issue = {
+            "file": "src/app/recipes/recipes.ts",
+            "issue": "service created but not integrated into any parent",
+            "fix": "inject the service",
+        }
+
+        result = _redirect_integration_issue_to_parent(issue, self._contract_files())
+
+        assert result["file"] == "src/app/recipes/recipes.ts"
 
 
 class TestAttemptBuildFixStillPatchesNonMissingModuleIssues:

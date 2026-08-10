@@ -63,7 +63,27 @@ def system_prompt() -> str:
         "became false in memory). In a zoneless app, any state read by the template that "
         "gets written inside an async callback (loading flags, fetched data, error messages) "
         "MUST be a Signal (`signal(...)`), written with `.set(...)`/`.update(...)`, and read "
-        "in the template by calling it (`loading()`), not read as a plain property.\n"
+        "in the template by calling it (`loading()`), not read as a plain property.\n\n"
+        "TICKET-AS-CONTRACT RULES — the ticket describes required BEHAVIOR, not a\n"
+        "coding suggestion. A file that compiles and looks plausible but does not\n"
+        "actually deliver that behavior is NOT a correct implementation:\n"
+        "25. NEVER hardcode, mock, or fake data (static arrays, placeholder strings, "
+        "fabricated API responses) when the ticket's expected changes call for real data "
+        "from an API/service. If a file's job is to display data from an API, it must "
+        "actually call that API (directly or via an injected service) and bind the real "
+        "response to the template — a visually complete UI backed by fake/static data "
+        "does not satisfy a 'fetch and display X from the API' requirement, even though "
+        "it renders correctly.\n"
+        "26. If you are MODIFYing a file whose expected changes include 'inject/call "
+        "service X' or 'fetch data from API Y', that file's generated content MUST "
+        "contain an actual injection of that service/HttpClient and an actual call to "
+        "it (e.g. `.subscribe(...)` or an async pipe) wired to a template binding — not "
+        "just an import statement, and not a placeholder comment like '// TODO: call API' "
+        "or '// data will be loaded here'. A page left as a static placeholder describing "
+        "what will happen is not the same as making it happen.\n"
+        "27. When MODIFYing a file to complete a feature, prefer reusing an existing "
+        "service/HTTP pattern already present elsewhere in this repository over "
+        "inventing a new one, if you were shown one.\n"
     )
 
 
@@ -218,15 +238,26 @@ def review_user_prompt(
     """
     original_section = ""
     if existing_code:
-        truncated = existing_code[:4000] if len(existing_code) > 4000 else existing_code
         original_section = f"""
 --------------------------------------------------
 ORIGINAL FILE
 --------------------------------------------------
 
-{truncated}
+{existing_code}
 """
 
+    # CRITICAL: never truncate the generated code shown to the reviewer.
+    # A truncated preview genuinely LOOKS incomplete/cut-off to the reviewer
+    # LLM — a real Angular page with API integration, loading/error states,
+    # and styling routinely exceeds a few thousand characters. Truncating
+    # here previously caused the reviewer to report "generated code is
+    # truncated/incomplete" purely because ITS OWN INPUT was truncated, not
+    # because the actual generated file was incomplete — this shipped two
+    # real PRs (SCRUM-10, SCRUM-14) with an unwired placeholder page because
+    # the file that legitimately needed the most content (the one wiring
+    # together the API call, service, and child component) was exactly the
+    # one long enough to get cut off by this limit and then rejected as
+    # "truncated" by a reviewer that never saw the rest of it.
     return f"""Review this code change.
 
 Ticket: {event.get("ticketId", "")}
@@ -239,10 +270,10 @@ Protected Files (must NOT be referenced or modified):
 {json.dumps(protected_files)}
 {original_section}
 --------------------------------------------------
-GENERATED CODE
+GENERATED CODE (complete file, not a preview)
 --------------------------------------------------
 
-{generated_code[:4000]}
+{generated_code}
 
 --------------------------------------------------
 VERIFY
@@ -252,6 +283,19 @@ VERIFY
 2. Is unrelated code left unchanged?
 3. Are protected files untouched?
 4. Were ONLY the expected changes made?
+5. Is the file actually complete — does the class body close properly, does
+   every method have a full implementation, and does the template have all
+   its closing tags? Only report "truncated/incomplete" if the code you were
+   given above (which is the COMPLETE file, not a snippet) actually ends
+   mid-statement or is missing a closing brace/tag.
+6. If any Expected Change above mentions fetching, calling, injecting, or
+   displaying data from an API/service, does the GENERATED CODE actually
+   contain a real call to that API/service (e.g. `.subscribe(`, an injected
+   HttpClient/service method call) wired to the template — or does it only
+   contain a hardcoded/static value, a placeholder comment, or an import
+   that is never invoked? If the expected change required real data and the
+   code doesn't actually fetch it, that is a FAIL regardless of how complete
+   or polished the rest of the file looks.
 
 Respond with ONLY: PASS or FAIL (with brief reason if FAIL)."""
 
@@ -280,7 +324,20 @@ def build_validation_system_prompt() -> str:
         "NgModule's declarations/imports, or be the target of a route. A file that "
         "compiles in isolation but is never imported or rendered anywhere is a "
         "FAILURE, even though it produces no compiler error — this exact bug has "
-        "shipped before (components created but not rendered on a dashboard).\n"
+        "shipped before (components created but not rendered on a dashboard, and "
+        "a service created but never injected/called anywhere).\n"
+        "   CRITICAL — WHICH FILE TO REPORT: when you report this as an issue, set "
+        "the \"file\" field to the PARENT file that is missing the import/injection/"
+        "selector usage (e.g. the page component that should call the service or "
+        "render the child component), NOT the newly created child file itself. The "
+        "child file is usually already correct in isolation — the bug is that the "
+        "PARENT never references it. Reporting the child as \"file\" causes the fix "
+        "to rewrite a file that was never broken while the actual unwired parent "
+        "stays untouched, which has shipped broken PRs before. If a newly created "
+        "service/component has NO parent file among the ones shown to you at all "
+        "(not even an incomplete one), report the HUB file mentioned in its ticket "
+        "context (e.g. the page component this feature belongs to) as \"file\" — "
+        "never report only the child.\n"
         "7. NAVIGATION CHECK (for auth/login-related changes): if a login/auth "
         "success handler is shown, verify it actually triggers router navigation "
         "(e.g. calls Router.navigate/navigateByUrl or sets a redirect) rather than "
@@ -299,7 +356,15 @@ def build_validation_system_prompt() -> str:
         "field — e.g. `this.loading = false;` — inside an RxJS `.subscribe(...)` or Promise "
         "`.then(...)` callback? If so, that is a FAIL: the view will never re-render after "
         "that mutation. Flag it as 'plain field mutated in async callback is zoneless-unsafe' "
-        "and suggest converting the field to a Signal written with `.set()`/`.update()`.\n\n"
+        "and suggest converting the field to a Signal written with `.set()`/`.update()`.\n"
+        "10. FAKE/PLACEHOLDER DATA CHECK: if a file is supposed to display data from an API "
+        "(look for HttpClient usage, injected services with 'get'/'fetch' methods, or ticket "
+        "context implying API-backed content), does it actually call that API and bind the "
+        "REAL response to the template? If instead it renders a hardcoded/static array, a "
+        "placeholder message like 'data will be loaded here' or 'coming soon', or never "
+        "calls the service it imports, that is a FAIL — flag it as 'file does not actually "
+        "fetch/display real data, still uses placeholder content' with fix 'inject the "
+        "service, call it in ngOnInit/constructor, bind the response to the template'.\n\n"
         "Respond with EXACTLY this JSON format:\n"
         '{"status": "PASS"}\n'
         "or\n"
@@ -326,10 +391,13 @@ def build_validation_user_prompt(
             branch so the LLM can verify the new component is actually
             referenced there, not just assume it based on file names.
     """
+    # Not truncated: a cut-off parent/generated file previously caused false
+    # "not integrated" reports (the import IS there, just past the cutoff)
+    # and false "truncated" reports, for the same reason review_user_prompt
+    # above must not truncate — see that function's docstring.
     files_section = ""
     for f in generated_files:
-        content_preview = f.get("content", "")[:2000]
-        files_section += f"\n--- {f['path']} ---\n{content_preview}\n"
+        files_section += f"\n--- {f['path']} ---\n{f.get('content', '')}\n"
 
     parents_section = ""
     if parent_files:
@@ -340,8 +408,7 @@ def build_validation_user_prompt(
             "--------------------------------------------------\n"
         )
         for f in parent_files:
-            content_preview = f.get("content", "")[:2000]
-            parents_section += f"\n--- {f['path']} ---\n{content_preview}\n"
+            parents_section += f"\n--- {f['path']} ---\n{f.get('content', '')}\n"
 
     return f"""Verify that these code changes will compile without errors AND that any
 newly created UI/components are actually integrated (imported + rendered/routed),
@@ -367,13 +434,16 @@ CHECK FOR
 3. Does any route lazy-load a component from a non-existent path?
 4. Does any file reference a class/interface that doesn't exist anywhere?
 5. Are all exported names used correctly in other files?
-6. For every newly CREATED component shown above: does at least one file in
-   DECLARED PARENT/INTEGRATION FILES actually import it AND use its selector in a
-   template (or declare/register it, or route to it)? If a new component has no
-   parent file provided, or the provided parent file does NOT actually reference
-   it, that is a FAIL — flag it with issue "component created but not integrated
-   into any parent" and fix "add <selector> to <parent file>'s template and import
-   the component in its imports array".
+6. For every newly CREATED component/service shown above: does at least one file in
+   DECLARED PARENT/INTEGRATION FILES actually import it AND use it (selector in a
+   template for components; injected and called for services)? If a new component/
+   service has no parent file provided, or the provided parent file does NOT
+   actually reference it, that is a FAIL — flag it with issue "component/service
+   created but not integrated into any parent" and fix "add <selector>/inject
+   <Service> to <parent file> and use it". Set "file" to that PARENT file's path
+   (the one missing the wiring), NOT the newly created child's path — the child is
+   usually already correct; the parent is what's actually broken and needs the fix
+   applied to it.
 7. If any generated file handles authentication success, does it call router
    navigation afterward? If not, flag it as a FAIL.
 8. For any `.pipe(`, `.subscribe(`, `.set(`, or `.update(` call on a service/class
@@ -389,6 +459,13 @@ CHECK FOR
    If so, flag it as a FAIL: "plain field '<name>' mutated in async callback is
    zoneless-unsafe; view will never re-render" with fix "convert '<name>' to a
    Signal written via .set()/.update()".
+10. Does any file that is supposed to fetch/display API data actually call an
+   HttpClient or injected service method and bind the real response to its
+   template — or does it just render a hardcoded array, a "coming soon"/
+   "will be loaded here" placeholder, or import a service without ever calling
+   it? A visually complete page backed by fake or absent data is a FAIL: flag
+   it as "file does not fetch/display real data" with fix "inject and call the
+   service, subscribe to the response, and bind it to the template".
 
 Return ONLY valid JSON:
 {{"status": "PASS"}}
