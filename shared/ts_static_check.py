@@ -26,6 +26,19 @@ probabilistic text review:
       `Signal<boolean>`, not an `Observable<boolean>` — this exact mistake
       has shipped before and is NOT caught by member-existence checks alone,
       since `pipe` genuinely isn't a member of the service class at all.)
+    - In a zoneless Angular app (no zone.js / no provideZoneChangeDetection
+      in the app's bootstrap config), does a component mutate its own plain
+      (non-Signal) class fields inside an RxJS `.subscribe()` callback or a
+      Promise `.then()` callback? Without zone.js patching async APIs,
+      Angular has no way to know the view needs re-rendering after such a
+      mutation — the data/state updates correctly in memory, but the
+      template never re-evaluates, so e.g. a loading spinner bound to a
+      plain `loading` field stays visible forever even after `loading` is
+      set to `false`. This exact bug has shipped before (an HTTP call
+      completed successfully but the loading indicator never went away).
+      This check only applies when the file/repo context confirms the app
+      is zoneless; it is a no-op (never flags anything) when zone.js is
+      configured, since that pattern is completely safe there.
 
 This is intentionally generic — it runs identically for every ticket, not
 just a specific one — and is grounded entirely in repository content, so it
@@ -279,14 +292,13 @@ def extract_injected_services(content: str) -> dict[str, str]:
     return services
 
 
-def extract_class_members(content: str, class_name: str) -> set[str] | None:
+def _extract_class_body(content: str, class_name: str) -> str | None:
     """
-    Extract member names (properties, getters, setters, methods) declared
-    directly on a class body via brace-matching + regexes.
-
-    Returns None if the class can't be found or its body can't be matched —
-    callers should skip member-existence checks in that case rather than
-    risk false positives from a failed/partial parse.
+    Find the body of `class <class_name> { ... }` via brace-matching.
+    Shared by every function below that needs to scan a specific class's
+    members. Returns None if the class can't be found or its closing brace
+    can't be matched — callers should treat that as "skip this class"
+    rather than risk false positives from a failed/partial parse.
     """
     class_match = re.search(rf"class\s+{re.escape(class_name)}\b[^{{]*\{{", content)
     if not class_match:
@@ -307,7 +319,22 @@ def extract_class_members(content: str, class_name: str) -> set[str] | None:
     if end is None:
         return None
 
-    body = content[start + 1 : end]
+    return content[start + 1 : end]
+
+
+def extract_class_members(content: str, class_name: str) -> set[str] | None:
+    """
+    Extract member names (properties, getters, setters, methods) declared
+    directly on a class body via brace-matching + regexes.
+
+    Returns None if the class can't be found or its body can't be matched —
+    callers should skip member-existence checks in that case rather than
+    risk false positives from a failed/partial parse.
+    """
+    body = _extract_class_body(content, class_name)
+    if body is None:
+        return None
+
     members: set[str] = set()
 
     for m in _GETTER_RE.finditer(body):
@@ -357,26 +384,10 @@ def extract_reactive_member_kinds(content: str, class_name: str) -> dict[str, st
     be confidently determined are omitted entirely — no false positives from
     ambiguous declarations.
     """
-    class_match = re.search(rf"class\s+{re.escape(class_name)}\b[^{{]*\{{", content)
-    if not class_match:
+    body = _extract_class_body(content, class_name)
+    if body is None:
         return {}
 
-    start = class_match.end() - 1
-    depth = 0
-    end: int | None = None
-    for i in range(start, len(content)):
-        if content[i] == "{":
-            depth += 1
-        elif content[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-
-    if end is None:
-        return {}
-
-    body = content[start + 1 : end]
     kinds: dict[str, str] = {}
 
     for m in _PROPERTY_DECL_RE.finditer(body):
@@ -435,8 +446,165 @@ def find_chained_member_calls(
 
 
 # ---------------------------------------------------------------------------
+# Zoneless change-detection safety
+# ---------------------------------------------------------------------------
+
+# Files that typically bootstrap the app and would import/configure zone.js
+# or provideZoneChangeDetection, used to decide whether an app is zoneless.
+_BOOTSTRAP_HINT_PATHS = ("main.ts", "app.config.ts", "app.config.server.ts")
+
+_ZONE_JS_HINT_RE = re.compile(r"['\"]zone\.js['\"]|provideZoneChangeDetection\s*\(")
+
+# A field is declared as a Signal if its initializer/type matches the same
+# heuristics used for reactive-kind classification elsewhere in this module.
+# Plain fields are anything NOT matching a Signal declaration pattern.
+_PLAIN_FIELD_DECL_RE = re.compile(
+    r"(?:^|\n)\s*(?:public|private|protected|static|readonly)*\s*("
+    + _MEMBER_NAME
+    + r")\s*(?::\s*(?P<type>[\w<>\[\],.\s|]+?))?\s*=\s*(?P<init>[^(].*?);"
+)
+
+# `this.field = ...` or `this.field.set(...)`/`this.field.update(...)` (the
+# latter two are Signal writes, not plain-field mutation, so they must be
+# excluded from what counts as an unsafe plain-field assignment).
+_THIS_FIELD_ASSIGN_RE = re.compile(r"\bthis\." + "(" + _MEMBER_NAME + r")" + r"\s*=(?!=)")
+
+# Boundaries of an RxJS `.subscribe({...})` or `.subscribe(fn)` call, and a
+# Promise `.then(...)` call — the callback bodies where zoneless-unsafe
+# mutation typically happens.
+_ASYNC_CALLBACK_START_RE = re.compile(r"\.(?:subscribe|then)\s*\(")
+
+
+def is_app_zoneless(bootstrap_files: dict[str, str]) -> bool:
+    """
+    Determine whether an Angular app is running zoneless, based on the
+    content of its bootstrap files (main.ts, app.config.ts, etc.).
+
+    An app is considered zoneless if none of the provided bootstrap files
+    reference 'zone.js' or call provideZoneChangeDetection(...). If no
+    bootstrap files are provided/available, this conservatively returns
+    False (i.e. assumes zone-full / does not flag anything) rather than
+    guessing, to avoid false positives when repo context is incomplete.
+
+    Args:
+        bootstrap_files: path -> content, for any of _BOOTSTRAP_HINT_PATHS
+            (or any file that looks like an app bootstrap/config file)
+            that could be fetched from the repository.
+    """
+    if not bootstrap_files:
+        return False
+
+    return all(not _ZONE_JS_HINT_RE.search(content) for content in bootstrap_files.values())
+
+
+def _find_async_callback_bodies(content: str) -> list[tuple[int, int]]:
+    """
+    Find the (start, end) character offsets of the body of every
+    `.subscribe(...)` / `.then(...)` call in content, via brace/paren
+    matching starting right after the opening `(`.
+
+    Handles both callback styles:
+        obs.subscribe({ next: (x) => { ... } })
+        obs.subscribe((x) => { ... })
+        promise.then((x) => { ... })
+    by matching from the opening paren of subscribe/then to its balanced
+    closing paren -- the whole argument list, which is a safe superset of
+    the individual arrow-function bodies and is sufficient for scanning for
+    `this.field = ...` mutations inside it.
+    """
+    bodies: list[tuple[int, int]] = []
+    for m in _ASYNC_CALLBACK_START_RE.finditer(content):
+        start = m.end() - 1  # position of the opening '('
+        depth = 0
+        end: int | None = None
+        for i in range(start, len(content)):
+            if content[i] == "(":
+                depth += 1
+            elif content[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end is not None:
+            bodies.append((start + 1, end))
+    return bodies
+
+
+def extract_plain_field_names(content: str, class_name: str) -> set[str]:
+    """
+    Extract the names of fields on a class that are PLAIN (not Signals) —
+    i.e. fields that would need zone.js to trigger a re-render when mutated
+    after component construction. Fields declared via `signal(...)`,
+    `computed(...)`, or typed `Signal<T>`/`WritableSignal<T>` are excluded,
+    since mutating those is always zoneless-safe (`.set()`/`.update()`
+    notify Angular directly regardless of zone.js).
+
+    Returns an empty set if the class can't be found/parsed — callers
+    should treat that as "nothing to check" rather than guessing.
+    """
+    body = _extract_class_body(content, class_name)
+    if body is None:
+        return set()
+
+    plain_fields: set[str] = set()
+    for m in _PLAIN_FIELD_DECL_RE.finditer(body):
+        name = m.group(1)
+        type_hint = m.group("type") or ""
+        init = m.group("init") or ""
+        combined = f"{type_hint} {init}"
+        is_signal = bool(
+            _SIGNAL_TYPE_HINT_RE.search(combined) or _SIGNAL_INIT_HINT_RE.search(combined)
+        )
+        if not is_signal:
+            plain_fields.add(name)
+
+    return plain_fields
+
+
+def find_unsafe_zoneless_mutations(
+    content: str,
+    class_name: str,
+    plain_fields: set[str],
+) -> list[tuple[str, int]]:
+    """
+    Find `this.<plainField> = ...` assignments that occur inside an RxJS
+    `.subscribe(...)` or Promise `.then(...)` callback body, for a class's
+    own plain (non-Signal) fields. In a zoneless app, these mutations never
+    trigger a view re-render -- this is exactly the bug pattern that shipped
+    in production (loading spinner bound to a plain `loading` field never
+    disappearing after an HTTP call completed).
+
+    Returns list of (field_name, line_number).
+    """
+    if not plain_fields:
+        return []
+
+    callback_ranges = _find_async_callback_bodies(content)
+    if not callback_ranges:
+        return []
+
+    results: list[tuple[str, int]] = []
+    for m in _THIS_FIELD_ASSIGN_RE.finditer(content):
+        field = m.group(1)
+        if field not in plain_fields:
+            continue
+        pos = m.start()
+        if any(start <= pos < end for start, end in callback_ranges):
+            line_no = content.count("\n", 0, pos) + 1
+            results.append((field, line_no))
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
+# Matches a self-declared class's export statement, used to find "which
+# class in this file am I checking for zoneless-unsafe self-mutation" —
+# distinct from _extract_class_body's by-name lookup, since here we don't
+# know the class name in advance.
+_SELF_CLASS_DECL_RE = re.compile(r"export\s+(?:default\s+)?(?:abstract\s+)?class\s+(\w+)")
 
 
 def check_typescript_integrity(
@@ -464,13 +632,59 @@ def check_typescript_integrity(
     """
     issues: list[dict[str, str]] = []
     content_cache: dict[str, str | None] = dict(files)
+    zoneless_result: dict[str, bool] = {}
 
     def get_content(path: str) -> str | None:
         if path not in content_cache:
             content_cache[path] = fetch_content(path)
         return content_cache[path]
 
+    def is_zoneless_app() -> bool:
+        # Computed lazily and cached: only fetched if a file in the
+        # changeset actually needs the answer (avoids unnecessary fetches
+        # for tickets that don't touch any async subscribe/then code).
+        if "value" not in zoneless_result:
+            bootstrap_contents: dict[str, str] = {}
+            for candidate in known_paths:
+                base = candidate.rsplit("/", 1)[-1]
+                if base in _BOOTSTRAP_HINT_PATHS:
+                    content = get_content(candidate)
+                    if content:
+                        bootstrap_contents[candidate] = content
+            zoneless_result["value"] = is_app_zoneless(bootstrap_contents)
+        return zoneless_result["value"]
+
     for path, content in files.items():
+        # -----------------------------------------------------------------
+        # Zoneless-unsafe plain-field mutation inside .subscribe()/.then()
+        # -----------------------------------------------------------------
+        self_class_match = _SELF_CLASS_DECL_RE.search(content)
+        if self_class_match and is_zoneless_app():
+            self_class_name = self_class_match.group(1)
+            plain_fields = extract_plain_field_names(content, self_class_name)
+            for field, line_no in find_unsafe_zoneless_mutations(
+                content, self_class_name, plain_fields
+            ):
+                issues.append(
+                    {
+                        "file": path,
+                        "issue": (
+                            f"'{field}' is a plain field mutated inside a .subscribe()/.then() "
+                            f"callback (line {line_no}), but this app is zoneless (no zone.js / "
+                            f"provideZoneChangeDetection configured) — Angular will never re-render "
+                            f"the view after this assignment, so any template binding to '{field}' "
+                            f"(e.g. a loading spinner) will appear stuck even though the underlying "
+                            f"value did change."
+                        ),
+                        "fix": (
+                            f"In {path}, convert '{field}' to a Signal (e.g. "
+                            f"`{field} = signal(...)`) and write it with `this.{field}.set(...)` "
+                            f"inside the callback, then read it as `{field}()` in the template — "
+                            f"the same zoneless-safe pattern already used elsewhere in this app."
+                        ),
+                    }
+                )
+
         # -----------------------------------------------------------------
         # Static imports: does the path resolve? Do named imports exist?
         # -----------------------------------------------------------------

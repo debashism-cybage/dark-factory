@@ -54,6 +54,16 @@ def system_prompt() -> str:
         "or typed `Observable<T>`) support `.pipe()`/`.subscribe()` but do NOT have `.set()` or "
         "`.update()`. Never assume a property is an Observable just because its name ends in "
         "'$' or because you expect reactive behavior — verify against its actual declaration.\n"
+        "24. ZONELESS CHANGE DETECTION: check whether this app is zoneless (no `zone.js` "
+        "import and no `provideZoneChangeDetection(...)` in app.config.ts/main.ts). If it is "
+        "zoneless, you MUST NOT mutate a plain (non-Signal) class field inside an RxJS "
+        "`.subscribe(...)` callback or a Promise `.then(...)` callback — Angular has no way "
+        "to detect that mutation and the view will never re-render (e.g. a loading spinner "
+        "bound to a plain `loading` field will stay visible forever even though the value "
+        "became false in memory). In a zoneless app, any state read by the template that "
+        "gets written inside an async callback (loading flags, fetched data, error messages) "
+        "MUST be a Signal (`signal(...)`), written with `.set(...)`/`.update(...)`, and read "
+        "in the template by calling it (`loading()`), not read as a plain property.\n"
     )
 
 
@@ -283,7 +293,13 @@ def build_validation_system_prompt() -> str:
         "`Signal<T>`) but the calling code uses `.pipe()`/`.subscribe()`, that is a FAIL — "
         "flag it as 'Property does not exist on type Signal'. If it's declared as an "
         "Observable/Subject but the calling code uses `.set()`/`.update()`, that is also "
-        "a FAIL.\n\n"
+        "a FAIL.\n"
+        "9. ZONELESS CHECK: if the app is zoneless (no zone.js/provideZoneChangeDetection "
+        "in the shown files), does any generated component mutate a plain (non-Signal) class "
+        "field — e.g. `this.loading = false;` — inside an RxJS `.subscribe(...)` or Promise "
+        "`.then(...)` callback? If so, that is a FAIL: the view will never re-render after "
+        "that mutation. Flag it as 'plain field mutated in async callback is zoneless-unsafe' "
+        "and suggest converting the field to a Signal written with `.set()`/`.update()`.\n\n"
         "Respond with EXACTLY this JSON format:\n"
         '{"status": "PASS"}\n'
         "or\n"
@@ -366,6 +382,13 @@ CHECK FOR
    set/update)? A Signal does not have `.pipe()`/`.subscribe()`; an Observable
    does not have `.set()`/`.update()`. If mismatched, flag it as a FAIL with
    issue "Property '<method>' does not exist on type '<Signal|Observable>'".
+9. If this app is zoneless (look for absence of 'zone.js' import / absence of
+   provideZoneChangeDetection in any app.config.ts/main.ts content shown above),
+   does any generated component mutate a plain (non-Signal) class field — e.g.
+   `this.loading = false;` — inside a `.subscribe(...)` or `.then(...)` callback?
+   If so, flag it as a FAIL: "plain field '<name>' mutated in async callback is
+   zoneless-unsafe; view will never re-render" with fix "convert '<name>' to a
+   Signal written via .set()/.update()".
 
 Return ONLY valid JSON:
 {{"status": "PASS"}}

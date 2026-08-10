@@ -14,6 +14,7 @@ from shared.ts_static_check import (
     extract_exports,
     extract_injected_services,
     extract_reactive_member_kinds,
+    is_app_zoneless,
     parse_dynamic_then_imports,
     parse_static_imports,
     resolve_module_path,
@@ -216,7 +217,9 @@ class TestCheckTypescriptIntegrityRealWorldBugs:
         assert "isLoading" in issues[0]["issue"]  # "Did you mean" suggestion
 
     def test_correct_code_produces_no_issues(self):
-        routes_content = "import { authGuard } from './guards/auth.guard';\nexport const routes = [];"
+        routes_content = (
+            "import { authGuard } from './guards/auth.guard';\nexport const routes = [];"
+        )
         files = {"src/app/app.routes.ts": routes_content}
         known_paths = {"src/app/app.routes.ts", "src/app/guards/auth.guard.ts"}
 
@@ -439,6 +442,206 @@ class TestSignalObservableMisuseRealWorldBug:
         def fetch(path: str) -> str | None:
             if path == "src/app/services/config.service.ts":
                 return "export class ConfigService {\n readonly retryPolicy = new Map<string, number>();\n}"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert issues == []
+
+
+class TestIsAppZoneless:
+    def test_true_when_no_bootstrap_files_reference_zone(self):
+        files = {
+            "src/app/app.config.ts": (
+                "export const appConfig = { providers: [provideRouter(routes)] };"
+            )
+        }
+        assert is_app_zoneless(files) is True
+
+    def test_false_when_zone_js_import_present(self):
+        files = {"src/main.ts": "import 'zone.js';\nbootstrapApplication(App);"}
+        assert is_app_zoneless(files) is False
+
+    def test_false_when_provideZoneChangeDetection_present(self):
+        files = {
+            "src/app/app.config.ts": (
+                "providers: [provideZoneChangeDetection({ eventCoalescing: true })]"
+            )
+        }
+        assert is_app_zoneless(files) is False
+
+    def test_false_when_no_bootstrap_files_available(self):
+        # Conservative default: don't guess zoneless without evidence.
+        assert is_app_zoneless({}) is False
+
+
+class TestZonelessUnsafeMutationRealWorldBug:
+    """
+    Reproduces the exact production failure from SCRUM-11: ProductsComponent
+    mutated plain fields (loading/products/error) inside an HTTP
+    .subscribe() callback. The API call succeeded and data arrived, but
+    since this app is zoneless, the loading spinner (*ngIf="loading")
+    never disappeared because Angular was never told to re-render.
+    """
+
+    PRODUCTS_COMPONENT = """
+    import { Component, OnInit } from '@angular/core';
+    import { HttpClient } from '@angular/common/http';
+
+    @Component({
+      selector: 'app-products',
+      template: `<div *ngIf="loading">Loading...</div>`
+    })
+    export class ProductsComponent implements OnInit {
+      products: any[] = [];
+      loading: boolean = false;
+      error: string | null = null;
+
+      constructor(private http: HttpClient) {}
+
+      ngOnInit(): void {
+        this.fetchProducts();
+      }
+
+      fetchProducts(): void {
+        this.loading = true;
+        this.http.get('/api/products').subscribe({
+          next: (response: any) => {
+            this.products = response.products;
+            this.loading = false;
+          },
+          error: () => {
+            this.error = 'Failed to load';
+            this.loading = false;
+          }
+        });
+      }
+    }
+    """
+
+    APP_CONFIG_ZONELESS = (
+        "export const appConfig = { providers: [provideRouter(routes)] };"
+    )
+    MAIN_TS_ZONELESS = "bootstrapApplication(App, appConfig).catch(console.error);"
+
+    def test_flags_plain_field_mutation_in_subscribe_when_zoneless(self):
+        files = {"src/app/products/products.ts": self.PRODUCTS_COMPONENT}
+        known_paths = {
+            "src/app/products/products.ts",
+            "src/app/app.config.ts",
+            "src/main.ts",
+        }
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/app.config.ts":
+                return self.APP_CONFIG_ZONELESS
+            if path == "src/main.ts":
+                return self.MAIN_TS_ZONELESS
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+
+        flagged_fields = {i["issue"].split("'")[1] for i in issues}
+        assert "loading" in flagged_fields
+        assert "products" in flagged_fields
+        assert "error" in flagged_fields
+
+    def test_not_flagged_when_app_has_zone_js(self):
+        files = {"src/app/products/products.ts": self.PRODUCTS_COMPONENT}
+        known_paths = {
+            "src/app/products/products.ts",
+            "src/app/app.config.ts",
+            "src/main.ts",
+        }
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/app.config.ts":
+                return self.APP_CONFIG_ZONELESS
+            if path == "src/main.ts":
+                return "import 'zone.js';\n" + self.MAIN_TS_ZONELESS
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert issues == []
+
+    def test_not_flagged_when_no_bootstrap_files_found(self):
+        # No app.config.ts/main.ts in known_paths -> can't confirm zoneless
+        # -> must not flag (avoid false positives from incomplete context).
+        files = {"src/app/products/products.ts": self.PRODUCTS_COMPONENT}
+        known_paths = {"src/app/products/products.ts"}
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=lambda p: None)
+        assert issues == []
+
+    def test_signal_based_component_not_flagged(self):
+        # The FIXED version: using signal()/.set() instead of plain fields.
+        content = """
+        import { Component, OnInit, signal } from '@angular/core';
+        import { HttpClient } from '@angular/common/http';
+
+        @Component({ selector: 'app-products', template: `` })
+        export class ProductsComponent implements OnInit {
+          products = signal<any[]>([]);
+          loading = signal(false);
+
+          constructor(private http: HttpClient) {}
+
+          ngOnInit(): void {
+            this.fetchProducts();
+          }
+
+          fetchProducts(): void {
+            this.loading.set(true);
+            this.http.get('/api/products').subscribe({
+              next: (response: any) => {
+                this.products.set(response.products);
+                this.loading.set(false);
+              }
+            });
+          }
+        }
+        """
+        files = {"src/app/products/products.ts": content}
+        known_paths = {
+            "src/app/products/products.ts",
+            "src/app/app.config.ts",
+            "src/main.ts",
+        }
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/app.config.ts":
+                return self.APP_CONFIG_ZONELESS
+            if path == "src/main.ts":
+                return self.MAIN_TS_ZONELESS
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert issues == []
+
+    def test_mutation_outside_callback_not_flagged(self):
+        # Direct field assignment outside any subscribe/then is a
+        # synchronous mutation within the same change-detection cycle that
+        # triggered it (e.g. a click handler) -- always safe, zoneless or
+        # not. Only async-callback mutations are the actual bug.
+        content = """
+        import { Component } from '@angular/core';
+
+        @Component({ selector: 'app-foo', template: `` })
+        export class FooComponent {
+          count: number = 0;
+
+          increment(): void {
+            this.count = this.count + 1;
+          }
+        }
+        """
+        files = {"src/app/foo.ts": content}
+        known_paths = {"src/app/foo.ts", "src/app/app.config.ts", "src/main.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/app.config.ts":
+                return self.APP_CONFIG_ZONELESS
+            if path == "src/main.ts":
+                return self.MAIN_TS_ZONELESS
             return None
 
         issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
