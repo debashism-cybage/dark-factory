@@ -14,6 +14,8 @@ from shared.ts_static_check import (
     extract_class_members,
     extract_exports,
     extract_injected_services,
+    extract_input_bindings,
+    extract_interface_members,
     extract_reactive_member_kinds,
     is_app_zoneless,
     parse_dynamic_then_imports,
@@ -101,6 +103,75 @@ class TestResolveModulePath:
         known = {"src/app/utils/index.ts"}
         resolved = resolve_module_path("src/app/app.component.ts", "./utils", known)
         assert resolved == "src/app/utils/index.ts"
+
+
+class TestExtractInputBindings:
+    def test_finds_input_with_non_null_assertion(self):
+        content = """
+        class ExerciseCardComponent {
+            @Input() exercise!: Exercise;
+        }
+        """
+        result = extract_input_bindings(content, "ExerciseCardComponent")
+        assert result == {"exercise": "Exercise"}
+
+    def test_finds_input_without_assertion(self):
+        content = """
+        class Foo {
+            @Input() item: Item;
+        }
+        """
+        result = extract_input_bindings(content, "Foo")
+        assert result == {"item": "Item"}
+
+    def test_finds_optional_input(self):
+        content = """
+        class Foo {
+            @Input() item?: Item;
+        }
+        """
+        result = extract_input_bindings(content, "Foo")
+        assert result == {"item": "Item"}
+
+    def test_no_inputs_returns_empty(self):
+        content = "class Foo { bar: string = ''; }"
+        assert extract_input_bindings(content, "Foo") == {}
+
+
+class TestExtractInterfaceMembers:
+    def test_extracts_flat_fields(self):
+        content = """
+        export interface Exercise {
+            name: string;
+            gifUrl: string;
+            bodyParts: string[];
+        }
+        """
+        members = extract_interface_members(content, "Exercise")
+        assert members == {"name", "gifUrl", "bodyParts"}
+
+    def test_extracts_optional_fields(self):
+        content = "interface Foo { bar?: string; }"
+        assert extract_interface_members(content, "Foo") == {"bar"}
+
+    def test_returns_none_for_nested_object_type(self):
+        # Deliberately conservative -- a nested object type field means the
+        # simple line-based regex can't safely parse the body, so this must
+        # return None (skip) rather than a wrong/partial member set.
+        content = """
+        interface Foo {
+            meta: { total: number; hasNextPage: boolean };
+        }
+        """
+        assert extract_interface_members(content, "Foo") is None
+
+    def test_returns_none_for_extends(self):
+        content = "interface Foo extends Bar { baz: string; }"
+        assert extract_interface_members(content, "Foo") is None
+
+    def test_returns_none_for_missing_interface(self):
+        content = "interface Other { x: string; }"
+        assert extract_interface_members(content, "Foo") is None
 
 
 class TestExpectedMissingPath:
@@ -284,6 +355,115 @@ class TestCheckTypescriptIntegrityRealWorldBugs:
         known_paths = {"src/app/services/auth.service.ts"}
 
         issues = check_typescript_integrity(files, known_paths, fetch_content=lambda p: None)
+        assert issues == []
+
+    def test_input_bound_property_access_on_nonexistent_interface_field_ts2339(self):
+        # Reproduces PR #33 / SCRUM-14 exactly: ExerciseCardComponent has
+        # `@Input() exercise!: Exercise;` and its inline template accesses
+        # `exercise.description`, but the Exercise interface never declares
+        # a `description` field. This shipped past self-review, build
+        # validation, AND the (at-the-time) static checker straight into a
+        # PR that failed `ng build` in CI.
+        card_content = """
+        import { Component, Input } from '@angular/core';
+        import { Exercise } from '../exercise.model';
+
+        @Component({
+            selector: 'app-exercise-card',
+            template: `
+                <div class="exercise-card">
+                    <h3>{{ exercise.name }}</h3>
+                    @if (exercise.description) {
+                        <p>{{ exercise.description }}</p>
+                    }
+                </div>
+            `
+        })
+        export class ExerciseCardComponent {
+            @Input() exercise!: Exercise;
+        }
+        """
+        files = {"src/app/exercises/exercise-card/exercise-card.component.ts": card_content}
+        known_paths = {
+            "src/app/exercises/exercise-card/exercise-card.component.ts",
+            "src/app/exercises/exercise.model.ts",
+        }
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/exercises/exercise.model.ts":
+                return (
+                    "export interface Exercise {\n"
+                    "  id: string;\n"
+                    "  name: string;\n"
+                    "  gifUrl: string;\n"
+                    "  bodyParts: string[];\n"
+                    "}\n"
+                )
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+
+        assert len(issues) == 2  # exercise.description accessed on 2 lines
+        assert all("description" in i["issue"] for i in issues)
+        assert all("Exercise" in i["issue"] for i in issues)
+
+    def test_import_path_matching_property_name_is_not_flagged(self):
+        # Regression: `@Input() exercise: Exercise` bound to a model
+        # imported `from '../exercise.model'` means the raw text
+        # "exercise.model" inside the import PATH looks exactly like a
+        # genuine `exercise.model` member access to a naive regex. This
+        # must not be flagged as "Property 'model' does not exist".
+        card_content = """
+        import { Component, Input } from '@angular/core';
+        import { Exercise } from '../exercise.model';
+
+        @Component({
+            selector: 'app-exercise-card',
+            template: `<h3>{{ exercise.name }}</h3>`
+        })
+        export class ExerciseCardComponent {
+            @Input() exercise!: Exercise;
+        }
+        """
+        files = {"src/app/exercises/exercise-card/exercise-card.component.ts": card_content}
+        known_paths = {
+            "src/app/exercises/exercise-card/exercise-card.component.ts",
+            "src/app/exercises/exercise.model.ts",
+        }
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/exercises/exercise.model.ts":
+                return "export interface Exercise {\n  id: string;\n  name: string;\n}\n"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert issues == []
+
+    def test_input_bound_property_access_on_existing_field_produces_no_issue(self):
+        card_content = """
+        import { Component, Input } from '@angular/core';
+        import { Exercise } from '../exercise.model';
+
+        @Component({
+            selector: 'app-exercise-card',
+            template: `<h3>{{ exercise.name }}</h3>`
+        })
+        export class ExerciseCardComponent {
+            @Input() exercise!: Exercise;
+        }
+        """
+        files = {"src/app/exercises/exercise-card/exercise-card.component.ts": card_content}
+        known_paths = {
+            "src/app/exercises/exercise-card/exercise-card.component.ts",
+            "src/app/exercises/exercise.model.ts",
+        }
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/exercises/exercise.model.ts":
+                return "export interface Exercise {\n  name: string;\n}\n"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
         assert issues == []
 
     def test_newly_created_sibling_file_in_same_changeset_resolves(self):

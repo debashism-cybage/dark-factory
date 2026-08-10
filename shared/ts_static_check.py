@@ -465,6 +465,142 @@ def find_chained_member_calls(
 
 
 # ---------------------------------------------------------------------------
+# @Input() property vs interface/model field mismatch
+# ---------------------------------------------------------------------------
+
+# `@Input() exercise!: Exercise;` / `@Input() exercise: Exercise;` /
+# `@Input() exercise?: Exercise;` — captures the bound property name and its
+# declared type name so template/class accesses on that property can be
+# cross-checked against the type's real fields.
+_INPUT_DECL_RE = re.compile(
+    r"@Input\(\)\s*(?:public\s+|private\s+|protected\s+|readonly\s+)*("
+    + _MEMBER_NAME
+    + r")\s*[!?]?\s*:\s*("
+    + _MEMBER_NAME
+    + r")"
+)
+
+_INTERFACE_DECL_RE = re.compile(r"(?:export\s+)?interface\s+(\w+)\b[^{]*\{")
+
+# A single flat interface member: `name: Type;` or `name?: Type;`. The type
+# portion excludes braces so this only matches flat (non-nested-object)
+# fields — see extract_interface_members's docstring for why that's a
+# deliberate safety choice, not an oversight.
+_INTERFACE_MEMBER_RE = re.compile(
+    r"(?:^|\n)\s*(" + _MEMBER_NAME + r")\s*\??\s*:\s*[^;{}]+;"
+)
+
+# Matches a full `import ... from '...'` statement, used to mask out import
+# paths before searching for member accesses. This exists because a common
+# and entirely valid naming convention — `@Input() exercise: Exercise` bound
+# to a model imported `from '../exercise.model'` — causes the raw text
+# "exercise.model" inside the import path string to look exactly like a
+# genuine `exercise.model` member access to a naive regex. Real Angular
+# code hits this collision routinely (the property name is usually the
+# lowercased type name, and the model file is usually named after it too),
+# so this isn't a contrived edge case.
+_IMPORT_STATEMENT_RE = re.compile(
+    r"import\s+(?:type\s+)?[^;]+?from\s+['\"][^'\"]+['\"]\s*;?"
+)
+
+
+def _mask_import_statements(content: str) -> str:
+    """
+    Replace the text of every `import ... from '...'` statement with spaces
+    of the same length (preserving newlines), so member-access regexes
+    can't accidentally match text that only appears inside an import path
+    string. Preserves overall content length/line numbers so any line
+    numbers computed against the masked content still match the original.
+    """
+
+    def _blank(m: re.Match[str]) -> str:
+        return re.sub(r"[^\n]", " ", m.group(0))
+
+    return _IMPORT_STATEMENT_RE.sub(_blank, content)
+
+
+def _extract_interface_body(content: str, interface_name: str) -> str | None:
+    """
+    Find the body of `interface <interface_name> { ... }` via brace-matching.
+    Returns None if the interface can't be found or its closing brace can't
+    be matched.
+    """
+    match = re.search(rf"interface\s+{re.escape(interface_name)}\b[^{{]*\{{", content)
+    if not match:
+        return None
+
+    start = match.end() - 1
+    depth = 0
+    end: int | None = None
+    for i in range(start, len(content)):
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    if end is None:
+        return None
+
+    return content[start + 1 : end]
+
+
+def extract_interface_members(content: str, interface_name: str) -> set[str] | None:
+    """
+    Extract the field names declared directly on a TypeScript `interface`
+    (e.g. `interface Exercise { name: string; gifUrl: string; }`).
+
+    This is deliberately conservative: if the interface body contains a
+    brace beyond its own opening one (i.e. a field has a nested object type
+    like `meta: { total: number };`), this returns None rather than a
+    partial/wrong member set — `_INTERFACE_MEMBER_RE` cannot safely parse
+    nested object types line-by-line, and guessing wrong here would cause
+    false positives (flagging a real field as nonexistent). Real-world
+    Angular API-response models are overwhelmingly flat, so this covers the
+    common case without risking incorrect flags on the uncommon one.
+
+    Returns None if the interface can't be found, can't be parsed, or
+    extends another interface (whose fields we can't see here) — callers
+    should skip the check entirely in that case, not assume an empty set.
+    """
+    body = _extract_interface_body(content, interface_name)
+    if body is None:
+        return None
+
+    if "extends" in content[: content.find(body)].rsplit("interface", 1)[-1]:
+        # `interface X extends Y { ... }` — Y's fields aren't visible here;
+        # skip rather than risk flagging an inherited field as missing.
+        return None
+
+    if "{" in body:
+        # Nested object type field(s) — see docstring above.
+        return None
+
+    members: set[str] = set()
+    for m in _INTERFACE_MEMBER_RE.finditer(body):
+        members.add(m.group(1))
+
+    return members if members else None
+
+
+def extract_input_bindings(content: str, class_name: str) -> dict[str, str]:
+    """
+    Find `@Input()` property declarations within a specific class body and
+    their declared type names. Returns {property_name: type_name}.
+
+    E.g. for `@Input() exercise!: Exercise;` inside `class ExerciseCardComponent`,
+    returns {"exercise": "Exercise"}.
+    """
+    body = _extract_class_body(content, class_name)
+    if body is None:
+        return {}
+
+    return {m.group(1): m.group(2) for m in _INPUT_DECL_RE.finditer(body)}
+
+
+# ---------------------------------------------------------------------------
 # Zoneless change-detection safety
 # ---------------------------------------------------------------------------
 
@@ -710,6 +846,72 @@ def check_typescript_integrity(
                 )
 
         # -----------------------------------------------------------------
+        # @Input() property member access vs its declared interface/model
+        # -----------------------------------------------------------------
+        # This catches the exact SCRUM-14 bug: a component declares
+        # `@Input() exercise!: Exercise;` and its template accesses
+        # `exercise.description`, but `Exercise` never declares a
+        # `description` field. Member-existence checks elsewhere in this
+        # module only cover injected SERVICES (constructor params /
+        # inject()); this covers @Input()-bound view-model objects, which
+        # is a distinct and equally common source of TS2339 in Angular
+        # component templates (inline templates are just template literals
+        # in the .ts file, so find_member_accesses already sees them).
+        if self_class_match:
+            input_bindings = extract_input_bindings(content, self_class_match.group(1))
+            for prop_name, type_name in input_bindings.items():
+                type_module = None
+                for imp in parse_static_imports(content):
+                    for _local, exported_name in imp["named"]:
+                        if exported_name == type_name:
+                            type_module = imp["module"]
+                            break
+                    if type_module:
+                        break
+
+                if not type_module or not type_module.startswith("."):
+                    continue
+
+                resolved_type_path = resolve_module_path(path, type_module, known_paths)
+                if not resolved_type_path:
+                    continue
+
+                type_content = get_content(resolved_type_path)
+                if not type_content:
+                    continue
+
+                interface_members = extract_interface_members(type_content, type_name)
+                if not interface_members:
+                    # Not found, unparsable, or has nested types -- skip
+                    # rather than risk a false positive (see
+                    # extract_interface_members's docstring).
+                    continue
+
+                masked_content = _mask_import_statements(content)
+                for _accessed_var, member, line_no in find_member_accesses(
+                    masked_content, [prop_name]
+                ):
+                    if member in interface_members:
+                        continue
+                    suggestion = difflib.get_close_matches(member, list(interface_members), n=1)
+                    hint = f" Did you mean '{suggestion[0]}'?" if suggestion else ""
+                    issues.append(
+                        {
+                            "file": path,
+                            "issue": (
+                                f"Property '{member}' does not exist on type '{type_name}'."
+                                f"{hint} (line {line_no})"
+                            ),
+                            "fix": (
+                                f"In {path}, either use an existing field of {type_name} "
+                                f"(available: {', '.join(sorted(interface_members))}) instead of "
+                                f"'{member}', or add a '{member}' field to the {type_name} "
+                                f"interface in {resolved_type_path} if the API actually returns it."
+                            ),
+                        }
+                    )
+
+        # -----------------------------------------------------------------
         # Static imports: does the path resolve? Do named imports exist?
         # -----------------------------------------------------------------
         for imp in parse_static_imports(content):
@@ -851,7 +1053,11 @@ def check_typescript_integrity(
                 # Extraction failed or found nothing — skip to avoid false positives.
                 continue
 
-            for _accessed_var, member, line_no in find_member_accesses(content, [var_name]):
+            # Mask import statements first -- same collision risk as the
+            # @Input() check above (e.g. a var named to match its import
+            # path) applies here too, for the same reason.
+            masked_content = _mask_import_statements(content)
+            for _accessed_var, member, line_no in find_member_accesses(masked_content, [var_name]):
                 if member in members:
                     continue
                 suggestion = difflib.get_close_matches(member, list(members), n=1)
@@ -879,7 +1085,7 @@ def check_typescript_integrity(
                 continue
 
             for _accessed_var, member, method, line_no in find_chained_member_calls(
-                content, [var_name]
+                masked_content, [var_name]
             ):
                 kind = reactive_kinds.get(member)
                 if kind is None:
