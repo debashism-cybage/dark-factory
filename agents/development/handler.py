@@ -413,9 +413,21 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     s3 = S3Helper(config.bucket_name)
     table = WorkflowTable(config.table_name)
 
-    # Create feature branch
+    # Create feature branch, always syncing with the latest main first if it
+    # already exists (see GitHubClient.ensure_branch/sync_branch_with_base).
+    # This prevents the branch from silently drifting from main across
+    # replan retries, which is what produces PRs with unrelated merge
+    # conflicts by the time they're opened.
     branch = f"feature/{ticket_id}"
-    github.ensure_branch(branch)
+    branch_sync_result = github.ensure_branch(branch)
+    if branch_sync_result and branch_sync_result.get("conflict"):
+        logger.warning(
+            "Feature branch has a real merge conflict with main — "
+            "continuing with existing branch content; PR will likely need "
+            "manual conflict resolution",
+            workflow_id=workflow_id,
+            branch=branch,
+        )
 
     # Execute each file in the contract
     generated_files: list[dict[str, Any]] = []
@@ -805,6 +817,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "pullRequest": pr["url"],
             "pullRequestNumber": pr["number"],
             "generatedFiles": generated_files,
+            "branchSyncConflict": bool(branch_sync_result and branch_sync_result.get("conflict")),
         }
     )
 

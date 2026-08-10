@@ -312,21 +312,139 @@ class GitHubClient:
     # Write operations (branch, commit, PR)
     # -----------------------------------------------------------------------
 
-    def ensure_branch(self, branch_name: str, base_branch: str | None = None) -> None:
+    def sync_branch_with_base(
+        self,
+        branch_name: str,
+        base_branch: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Merge the latest base_branch (default: main) into branch_name.
+
+        Why this exists: a feature branch is created once from main's tip,
+        but a ticket's development can span multiple Development Agent
+        invocations (including adaptive-replan retries) over an extended
+        period. Other work can land on main in the meantime. If the feature
+        branch is never re-synced, it silently drifts further from main on
+        every retry, and the eventual PR shows accumulated merge conflicts
+        that have nothing to do with the ticket itself. This is called
+        every time `ensure_branch` finds the branch already exists, so the
+        branch is always brought up to date with main BEFORE any further
+        GitHub read/write happens against it — for every ticket, generically.
+
+        Uses GitHub's Merge API (a real merge commit on branch_name), not a
+        destructive reset, so it never discards the branch's own commits.
+
+        Returns:
+            Dict describing the outcome:
+                {"synced": bool, "conflict": bool, "alreadyUpToDate": bool,
+                 "message": str}
+            On a real merge conflict (branch_name has changes to the same
+            lines as base_branch), this returns conflict=True rather than
+            raising — the pipeline logs it and continues with the branch's
+            existing content rather than aborting, since automatic conflict
+            resolution isn't safe to attempt here. Callers should surface
+            this in artifacts/logs for human visibility.
+        """
+        base_branch = base_branch or self.default_branch
+
+        try:
+            result = self._request(
+                "POST",
+                "/merges",
+                body={
+                    "base": branch_name,
+                    "head": base_branch,
+                    "commit_message": f"chore: sync {branch_name} with latest {base_branch}",
+                },
+            )
+        except GitHubAPIError as ex:
+            if ex.status_code == 409:
+                logger.warning(
+                    "Merge conflict syncing branch with base — continuing with "
+                    "existing branch content; PR may show conflicts that need "
+                    "manual resolution",
+                    branch=branch_name,
+                    base=base_branch,
+                )
+                return {
+                    "synced": False,
+                    "conflict": True,
+                    "alreadyUpToDate": False,
+                    "message": ex.message,
+                }
+            logger.warning(
+                "Failed to sync branch with base",
+                branch=branch_name,
+                base=base_branch,
+                error=str(ex),
+            )
+            return {
+                "synced": False,
+                "conflict": False,
+                "alreadyUpToDate": False,
+                "message": str(ex),
+            }
+
+        if result is None:
+            # 204 No Content: branch_name already contains base_branch's tip.
+            logger.info(
+                "Branch already up to date with base",
+                branch=branch_name,
+                base=base_branch,
+            )
+            return {
+                "synced": True,
+                "conflict": False,
+                "alreadyUpToDate": True,
+                "message": "",
+            }
+
+        logger.info(
+            "Branch synced with latest base",
+            branch=branch_name,
+            base=base_branch,
+            merge_sha=result.get("sha"),
+        )
+        return {
+            "synced": True,
+            "conflict": False,
+            "alreadyUpToDate": False,
+            "message": "",
+        }
+
+    def ensure_branch(
+        self, branch_name: str, base_branch: str | None = None
+    ) -> dict[str, Any] | None:
         """
         Ensure a branch exists. Creates it from base_branch if it doesn't.
+
+        If the branch already exists, ALWAYS syncs it with the latest
+        base_branch first (see sync_branch_with_base) before returning —
+        this is the "always take latest pull of main before doing anything
+        with GitHub" step, applied generically for every ticket, every
+        Development Agent invocation, and every adaptive-replan retry.
 
         Args:
             branch_name: Target branch name.
             base_branch: Branch to fork from (defaults to main).
+
+        Returns:
+            The sync result dict from sync_branch_with_base if the branch
+            already existed, or None if the branch was newly created (a new
+            branch is created directly from base_branch's current tip, so it
+            is already up to date and needs no separate sync).
         """
         base_branch = base_branch or self.default_branch
 
         # Check if branch already exists
         try:
             self._request("GET", f"/git/ref/heads/{branch_name}")
-            logger.info("Branch already exists", branch=branch_name)
-            return
+            logger.info(
+                "Branch already exists, syncing with latest base branch first",
+                branch=branch_name,
+                base=base_branch,
+            )
+            return self.sync_branch_with_base(branch_name, base_branch)
         except GitHubAPIError:
             pass
 
@@ -341,6 +459,7 @@ class GitHubClient:
             body={"ref": f"refs/heads/{branch_name}", "sha": sha},
         )
         logger.info("Branch created", branch=branch_name, base=base_branch)
+        return None
 
     def commit_file(
         self,
