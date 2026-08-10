@@ -63,6 +63,7 @@ import difflib
 import posixpath
 import re
 from collections.abc import Callable
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Identifier / regex building blocks
@@ -266,6 +267,24 @@ def resolve_module_path(from_path: str, module_path: str, known_paths: set[str])
             return candidate
 
     return None
+
+
+def expected_missing_path(from_path: str, module_path: str) -> str:
+    """
+    Best-effort guess at the file path an unresolved relative import SHOULD
+    have pointed to, so a missing dependency can be created at a sane
+    location instead of only ever patching the file that imports it.
+
+    Mirrors resolve_module_path's own path-joining logic, but since nothing
+    matched in known_paths we have no real file to return — we pick the most
+    likely intended path (the module path + '.ts', since that is the
+    overwhelming convention for Angular/TS source) so a CREATE can target it.
+    """
+    base_dir = posixpath.dirname(from_path)
+    combined = posixpath.normpath(posixpath.join(base_dir, module_path)).replace("\\", "/")
+    if combined.endswith(_RESOLVABLE_EXTENSIONS):
+        return combined
+    return f"{combined}.ts"
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +630,7 @@ def check_typescript_integrity(
     files: dict[str, str],
     known_paths: set[str],
     fetch_content: Callable[[str], str | None],
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """
     Cross-reference every relative import, dynamic-import member access, and
     injected-service property access in `files` against real repository
@@ -628,9 +647,14 @@ def check_typescript_integrity(
             changeset itself (e.g. an existing service/component file).
 
     Returns:
-        List of issue dicts: {"file": ..., "issue": ..., "fix": ...}.
+        List of issue dicts: {"file": ..., "issue": ..., "fix": ...}. Unresolved
+        relative imports (the class of bug that patch-in-place fixes can never
+        actually resolve, since the target file doesn't exist) additionally
+        carry {"kind": "MISSING_MODULE", "expectedPath": ..., "requiredExports":
+        [...], "importingModule": ...} so callers can create the missing file
+        instead of only rewriting the importer.
     """
-    issues: list[dict[str, str]] = []
+    issues: list[dict[str, Any]] = []
     content_cache: dict[str, str | None] = dict(files)
     zoneless_result: dict[str, bool] = {}
 
@@ -695,6 +719,7 @@ def check_typescript_integrity(
 
             resolved = resolve_module_path(path, module, known_paths)
             if resolved is None:
+                named_exports_needed = [exported for _local, exported in imp["named"]]
                 issues.append(
                     {
                         "file": path,
@@ -703,6 +728,16 @@ def check_typescript_integrity(
                             f"Update the import path in {path} to point to the file that actually "
                             f"exists in the repository (the current path '{module}' does not resolve)."
                         ),
+                        # These extra keys let the caller distinguish "the
+                        # target file doesn't exist at all" (fixable only by
+                        # CREATING it) from "wrong content in an existing
+                        # file" (fixable by patching in place). A patch to
+                        # `path` can never resolve this issue on its own —
+                        # there is nothing at `module` to patch.
+                        "kind": "MISSING_MODULE",
+                        "expectedPath": expected_missing_path(path, module),
+                        "requiredExports": named_exports_needed,
+                        "importingModule": module,
                     }
                 )
                 continue
@@ -758,6 +793,10 @@ def check_typescript_integrity(
                         "file": path,
                         "issue": f"Cannot find module '{module}' for dynamic import",
                         "fix": f"Update the dynamic import path in {path} to point to a file that actually exists.",
+                        "kind": "MISSING_MODULE",
+                        "expectedPath": expected_missing_path(path, module),
+                        "requiredExports": [dyn["member"]],
+                        "importingModule": module,
                     }
                 )
                 continue

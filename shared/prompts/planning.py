@@ -202,7 +202,16 @@ def implementation_contract_system_prompt() -> str:
         "Router.navigate). Include MODIFY entries for any of these that need changes "
         "to complete the flow — a login that authenticates but never navigates is a "
         "failed implementation.\n"
-        "8. Return ONLY valid JSON. No markdown. No code fences.\n"
+        "8. DEPENDENCY COMPLETENESS RULE (mandatory): if a file you plan to MODIFY or "
+        "CREATE will need to import a local sibling file (another component, service, "
+        "guard, pipe, or directive that is NOT a third-party package) that does not "
+        "already exist among the repository files you were shown, that sibling file "
+        "is a MISSING dependency and MUST get its own CREATE entry in this same "
+        "contract. Never plan a file that imports something you have not also planned "
+        "to create — an import to a file that doesn't exist and was never planned is "
+        "a guaranteed compile failure (TS2307 Cannot find module), and the developer "
+        "executing this contract has no ability to invent files you didn't list.\n"
+        "9. Return ONLY valid JSON. No markdown. No code fences.\n"
     )
 
 
@@ -313,6 +322,16 @@ Based on the actual file contents above:
    ticket implies "user should reach page X after action Y", verify (from the file
    contents shown) whether the code that performs action Y calls router navigation,
    and add a MODIFY entry if it doesn't.
+8. DEPENDENCY COMPLETENESS CHECK (mandatory, do this last): for every file you are
+   about to list — both MODIFY and CREATE entries — think through what NEW local
+   imports that file's changes will require (e.g. a new child component such as
+   `<app-recipe-card>`, a new guard, a new service). For each such local import,
+   confirm the target file is EITHER already present in the candidate paths above
+   OR already has its own CREATE entry in the `files` list you are producing. If
+   neither is true, add a CREATE entry for it now, in this same response — do not
+   defer it. A planned file that will import something nonexistent and unplanned is
+   a guaranteed build failure that cannot be fixed by patching the importer alone,
+   because there is nothing to import.
 
 Return ONLY this JSON structure:
 

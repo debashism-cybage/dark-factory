@@ -10,6 +10,7 @@ module (see agents/development/handler.py docstring):
 
 from shared.ts_static_check import (
     check_typescript_integrity,
+    expected_missing_path,
     extract_class_members,
     extract_exports,
     extract_injected_services,
@@ -102,6 +103,18 @@ class TestResolveModulePath:
         assert resolved == "src/app/utils/index.ts"
 
 
+class TestExpectedMissingPath:
+    def test_appends_ts_extension(self):
+        result = expected_missing_path(
+            "src/app/recipes/recipes.ts", "./recipe-card/recipe-card"
+        )
+        assert result == "src/app/recipes/recipe-card/recipe-card.ts"
+
+    def test_leaves_existing_extension_untouched(self):
+        result = expected_missing_path("src/app/app.routes.ts", "./auth/auth.guard.ts")
+        assert result == "src/app/auth/auth.guard.ts"
+
+
 class TestExtractInjectedServices:
     def test_constructor_param(self):
         content = """
@@ -173,6 +186,40 @@ class TestCheckTypescriptIntegrityRealWorldBugs:
         assert len(issues) == 1
         assert issues[0]["file"] == "src/app/app.routes.ts"
         assert "auth/auth.guard" in issues[0]["issue"]
+
+    def test_unresolvable_import_carries_missing_module_metadata(self):
+        # This is the SCRUM-10 bug: recipes.ts imports a sibling component
+        # that was never planned or created. The checker must flag this as
+        # a MISSING_MODULE kind with enough metadata (expectedPath,
+        # requiredExports) for the caller to CREATE the file, not just
+        # re-patch the importer with another guess.
+        recipes_content = (
+            "import { RecipeCardComponent } from './recipe-card/recipe-card';\n"
+            "export class Recipes {}"
+        )
+        files = {"src/app/recipes/recipes.ts": recipes_content}
+        known_paths = {"src/app/recipes/recipes.ts"}
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=lambda p: None)
+
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue["kind"] == "MISSING_MODULE"
+        assert issue["expectedPath"] == "src/app/recipes/recipe-card/recipe-card.ts"
+        assert issue["requiredExports"] == ["RecipeCardComponent"]
+        assert issue["importingModule"] == "./recipe-card/recipe-card"
+
+    def test_dynamic_import_missing_module_carries_metadata(self):
+        routes_content = "component: () => import('./recipes/recipes').then((m) => m.Recipes),"
+        files = {"src/app/app.routes.ts": routes_content}
+        known_paths = {"src/app/app.routes.ts"}  # recipes.ts genuinely doesn't exist
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=lambda p: None)
+
+        assert len(issues) == 1
+        assert issues[0]["kind"] == "MISSING_MODULE"
+        assert issues[0]["expectedPath"] == "src/app/recipes/recipes.ts"
+        assert issues[0]["requiredExports"] == ["Recipes"]
 
     def test_dynamic_import_wrong_export_name_ts2339(self):
         routes_content = "component: () => import('./recipes/recipes').then((m) => m.Recipes),"

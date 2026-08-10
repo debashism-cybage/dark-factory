@@ -287,6 +287,122 @@ def _run_build_validation(
         return []
 
 
+def _attempt_create_missing_module(
+    bedrock: BedrockClient,
+    github: GitHubClient,
+    branch: str,
+    event: dict[str, Any],
+    issue: dict[str, Any],
+    ticket_id: str,
+    validation_checklist: list[str],
+) -> dict[str, Any] | None:
+    """
+    Fix a MISSING_MODULE issue by CREATING the missing dependency file,
+    instead of patching the file that imports it.
+
+    Why this exists: `_attempt_build_fix` (below) only ever rewrites the
+    *importing* file. When the real problem is "the imported file was never
+    planned or generated" (e.g. a component imports a sibling component that
+    the Planning Agent's contract never listed), patching the importer can
+    only ever toggle which nonexistent path it points at — it can never make
+    the target exist. This is exactly what happened on SCRUM-10: two
+    successive auto-fix commits just swapped the broken import path between
+    two equally-nonexistent files, then gave up after max_fix_rounds and
+    shipped the PR with a still-broken import.
+
+    Args:
+        issue: Dict from ts_static_check with kind="MISSING_MODULE",
+            "expectedPath", "requiredExports", "importingModule", plus the
+            usual "file"/"issue"/"fix" keys.
+
+    Returns:
+        File entry dict if the missing file was created, None if it
+        couldn't be (e.g. Bedrock failed, or the path already exists so
+        this isn't really a missing-module situation).
+    """
+    importing_file = issue.get("file", "")
+    expected_path = issue.get("expectedPath", "")
+    required_exports = issue.get("requiredExports", []) or []
+    importing_module = issue.get("importingModule", "")
+
+    if not importing_file or not expected_path:
+        return None
+
+    # Guard against acting on stale info: if the path already exists (e.g. a
+    # previous fix round already created it), this isn't a missing-module
+    # case anymore — let the normal re-validation pass judge it instead of
+    # overwriting a file that might now be correct.
+    if github.file_exists(expected_path, branch) or github.file_exists(expected_path):
+        logger.info(
+            "Missing-module target already exists, skipping create",
+            expected_path=expected_path,
+        )
+        return None
+
+    logger.info(
+        "Creating missing dependency file",
+        importing_file=importing_file,
+        expected_path=expected_path,
+        required_exports=required_exports,
+    )
+
+    try:
+        try:
+            importer_content = github.get_file_content(importing_file, branch)
+        except Exception:
+            importer_content = ""
+
+        create_prompt = (
+            f"A file imports from '{importing_module}' but that file does not exist yet "
+            f"in the repository. Create it.\n\n"
+            f"Missing file to create: {expected_path}\n"
+            f"It must export: {', '.join(required_exports) if required_exports else '(match what the importer expects)'}\n\n"
+            f"FILE THAT IMPORTS IT ({importing_file}):\n\n{importer_content}\n\n"
+            f"Create a complete, minimal, working implementation of {expected_path} that:\n"
+            f"- Exports exactly the name(s) listed above (match spelling/case exactly).\n"
+            f"- Is consistent with how it is used in the importing file shown above "
+            f"(e.g. if used as an Angular component with a selector in a template, "
+            f"create a real standalone Angular component; if used as a service, create "
+            f"an @Injectable service; if used as a guard, create a CanActivateFn).\n"
+            f"- Follows standard Angular/TypeScript conventions for this kind of file.\n"
+            f"- Compiles on its own (correct imports, no missing types).\n\n"
+            f"Return ONLY the complete file contents for {expected_path}.\n"
+            f"Do not wrap in markdown. Do not use code fences. Do not explain."
+        )
+
+        created_code = bedrock.converse(
+            system_prompt=prompts.system_prompt(),
+            user_prompt=create_prompt,
+            max_tokens=8192,
+        )
+
+        commit_msg = f"fix({ticket_id}): create missing dependency {expected_path}"
+        github.commit_file(
+            branch=branch,
+            path=expected_path,
+            content=created_code,
+            message=commit_msg,
+        )
+
+        logger.info("Missing dependency file created", expected_path=expected_path)
+
+        return {
+            "path": expected_path,
+            "operation": "BUILD_FIX",
+            "status": "SUCCESS",
+            "size": len(created_code),
+            "issue": issue.get("issue", ""),
+        }
+
+    except Exception as ex:
+        logger.error(
+            "Failed to create missing dependency file",
+            expected_path=expected_path,
+            error=str(ex),
+        )
+        return None
+
+
 def _attempt_build_fix(
     bedrock: BedrockClient,
     github: GitHubClient,
@@ -795,15 +911,32 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
 
             for issue in build_issues[:fixes_per_round]:
-                fixed = _attempt_build_fix(
-                    bedrock=bedrock,
-                    github=github,
-                    branch=branch,
-                    event=event,
-                    issue=issue,
-                    ticket_id=ticket_id,
-                    validation_checklist=validation_checklist,
-                )
+                # MISSING_MODULE issues (from the deterministic checker) mean
+                # the imported file doesn't exist at all — patching the
+                # importer can never fix that; the missing file itself must
+                # be created. This is the fix for the SCRUM-10 class of bug,
+                # where two prior auto-fix rounds just toggled the import
+                # path between two equally-nonexistent files.
+                if issue.get("kind") == "MISSING_MODULE":
+                    fixed = _attempt_create_missing_module(
+                        bedrock=bedrock,
+                        github=github,
+                        branch=branch,
+                        event=event,
+                        issue=issue,
+                        ticket_id=ticket_id,
+                        validation_checklist=validation_checklist,
+                    )
+                else:
+                    fixed = _attempt_build_fix(
+                        bedrock=bedrock,
+                        github=github,
+                        branch=branch,
+                        event=event,
+                        issue=issue,
+                        ticket_id=ticket_id,
+                        validation_checklist=validation_checklist,
+                    )
                 if fixed:
                     generated_files.append(fixed)
 
