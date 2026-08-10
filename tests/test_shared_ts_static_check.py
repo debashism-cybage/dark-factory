@@ -13,6 +13,7 @@ from shared.ts_static_check import (
     extract_class_members,
     extract_exports,
     extract_injected_services,
+    extract_reactive_member_kinds,
     parse_dynamic_then_imports,
     parse_static_imports,
     resolve_module_path,
@@ -248,4 +249,197 @@ class TestCheckTypescriptIntegrityRealWorldBugs:
         known_paths = set(files.keys())
 
         issues = check_typescript_integrity(files, known_paths, fetch_content=lambda p: None)
+        assert issues == []
+
+
+class TestExtractReactiveMemberKinds:
+    def test_signal_via_asreadonly(self):
+        content = """
+        export class AuthService {
+            private loading = signal(false);
+            readonly isLoading = this.loading.asReadonly();
+        }
+        """
+        kinds = extract_reactive_member_kinds(content, "AuthService")
+        assert kinds.get("isLoading") == "signal"
+
+    def test_signal_via_type_annotation(self):
+        content = """
+        export class AuthService {
+            readonly isLoading: Signal<boolean> = computed(() => this.loading());
+        }
+        """
+        kinds = extract_reactive_member_kinds(content, "AuthService")
+        assert kinds.get("isLoading") == "signal"
+
+    def test_observable_via_type_annotation(self):
+        content = """
+        export class AuthService {
+            readonly loading$: Observable<boolean> = this.loadingSubject.asObservable();
+        }
+        """
+        kinds = extract_reactive_member_kinds(content, "AuthService")
+        assert kinds.get("loading$") == "observable"
+
+    def test_observable_via_subject_init(self):
+        content = """
+        export class AuthService {
+            private loadingSubject = new BehaviorSubject<boolean>(false);
+        }
+        """
+        kinds = extract_reactive_member_kinds(content, "AuthService")
+        assert kinds.get("loadingSubject") == "observable"
+
+    def test_ambiguous_property_omitted(self):
+        content = """
+        export class AuthService {
+            readonly maxRetries = 3;
+        }
+        """
+        kinds = extract_reactive_member_kinds(content, "AuthService")
+        assert "maxRetries" not in kinds
+
+
+class TestSignalObservableMisuseRealWorldBug:
+    """
+    Reproduces the exact production failure:
+    TS2339: Property 'pipe' does not exist on type 'Signal<boolean>'.
+        authService.isLoading.pipe(...)
+    where isLoading is declared via `.asReadonly()` (a Signal), not an
+    Observable.
+    """
+
+    def test_pipe_on_signal_is_flagged(self):
+        guard_content = """
+        import { AuthService } from '../services/auth.service';
+        export const authGuard: CanActivateFn = () => {
+            const authService = inject(AuthService);
+            return authService.isLoading.pipe(
+                map((loading) => !loading)
+            );
+        };
+        """
+        files = {"src/app/guards/auth.guard.ts": guard_content}
+        known_paths = {"src/app/guards/auth.guard.ts", "src/app/services/auth.service.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/services/auth.service.ts":
+                return """
+                export class AuthService {
+                    private loading = signal(false);
+                    readonly isLoading = this.loading.asReadonly();
+                }
+                """
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+
+        assert len(issues) == 1
+        assert "pipe" in issues[0]["issue"]
+        assert "Signal" in issues[0]["issue"]
+        assert "isLoading()" in issues[0]["fix"] or "toObservable" in issues[0]["fix"]
+
+    def test_subscribe_on_signal_is_flagged(self):
+        content = """
+        import { AuthService } from './services/auth.service';
+        export class Foo {
+            constructor(private authService: AuthService) {
+                this.authService.isLoading.subscribe((v) => console.log(v));
+            }
+        }
+        """
+        files = {"src/app/foo.ts": content}
+        known_paths = {"src/app/foo.ts", "src/app/services/auth.service.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/services/auth.service.ts":
+                return "export class AuthService {\n readonly isLoading = signal(false);\n}"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert len(issues) == 1
+        assert "subscribe" in issues[0]["issue"]
+
+    def test_set_on_observable_is_flagged(self):
+        content = """
+        import { AuthService } from './services/auth.service';
+        export class Foo {
+            constructor(private authService: AuthService) {
+                this.authService.loading$.set(true);
+            }
+        }
+        """
+        files = {"src/app/foo.ts": content}
+        known_paths = {"src/app/foo.ts", "src/app/services/auth.service.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/services/auth.service.ts":
+                return "export class AuthService {\n readonly loading$: Observable<boolean> = of(false);\n}"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert len(issues) == 1
+        assert "set" in issues[0]["issue"]
+
+    def test_correct_signal_usage_not_flagged(self):
+        # Calling the signal directly (isLoading()) is correct and must not
+        # be flagged.
+        content = """
+        import { AuthService } from '../services/auth.service';
+        export const authGuard: CanActivateFn = () => {
+            const authService = inject(AuthService);
+            return !authService.isLoading();
+        };
+        """
+        files = {"src/app/guards/auth.guard.ts": content}
+        known_paths = {"src/app/guards/auth.guard.ts", "src/app/services/auth.service.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/services/auth.service.ts":
+                return "export class AuthService {\n readonly isLoading = signal(false).asReadonly();\n}"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert issues == []
+
+    def test_correct_observable_usage_not_flagged(self):
+        content = """
+        import { AuthService } from '../services/auth.service';
+        export const authGuard: CanActivateFn = () => {
+            const authService = inject(AuthService);
+            return authService.loading$.pipe(map((v) => !v));
+        };
+        """
+        files = {"src/app/guards/auth.guard.ts": content}
+        known_paths = {"src/app/guards/auth.guard.ts", "src/app/services/auth.service.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/services/auth.service.ts":
+                return "export class AuthService {\n readonly loading$: Observable<boolean> = of(false);\n}"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert issues == []
+
+    def test_ambiguous_member_not_flagged(self):
+        # A plain number/string property must never trigger a
+        # signal/observable mismatch, even if some method is called on it
+        # that happens to share a name with a Signal/Observable method.
+        content = """
+        import { ConfigService } from './services/config.service';
+        export class Foo {
+            constructor(private configService: ConfigService) {
+                this.configService.retryPolicy.set(3);
+            }
+        }
+        """
+        files = {"src/app/foo.ts": content}
+        known_paths = {"src/app/foo.ts", "src/app/services/config.service.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/services/config.service.ts":
+                return "export class ConfigService {\n readonly retryPolicy = new Map<string, number>();\n}"
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
         assert issues == []

@@ -19,6 +19,13 @@ probabilistic text review:
       export in the target file?
     - Does every property access on an Angular-injected service match a
       real member of that service's class?
+    - Does code call RxJS-only methods (.pipe/.subscribe/etc.) on a member
+      that is actually an Angular Signal, or Signal-only methods
+      (.set/.update/.asReadonly) on a member that is actually an Observable?
+      (e.g. `authService.isLoading.pipe(...)` when `isLoading` is a
+      `Signal<boolean>`, not an `Observable<boolean>` — this exact mistake
+      has shipped before and is NOT caught by member-existence checks alone,
+      since `pipe` genuinely isn't a member of the service class at all.)
 
 This is intentionally generic — it runs identically for every ticket, not
 just a specific one — and is grounded entirely in repository content, so it
@@ -89,7 +96,32 @@ _PROPERTY_RE = re.compile(
     + r")\s*[:=]\s*[^(].*?;"
 )
 
+# Captures name + optional type annotation + initializer, used to classify a
+# property as a Signal or an Observable so reactive-API misuse can be caught
+# (see _classify_reactive_kind below).
+_PROPERTY_DECL_RE = re.compile(
+    r"(?:^|\n)\s*(?:public|private|protected|static|readonly)*\s*("
+    + _MEMBER_NAME
+    + r")\s*(?::\s*(?P<type>[\w<>\[\],.\s|]+?))?\s*=\s*(?P<init>[^(].*?);"
+)
+
 _RESERVED_METHOD_NAMES = {"constructor", "if", "for", "while", "switch", "catch", "else"}
+
+# Heuristics for classifying whether a class member is an Angular Signal or
+# an RxJS Observable, based on its type annotation and/or initializer text.
+_SIGNAL_TYPE_HINT_RE = re.compile(r"\b(?:Writable)?Signal\s*<")
+_SIGNAL_INIT_HINT_RE = re.compile(r"\b(?:signal|computed)\s*\(|\.asReadonly\s*\(\s*\)")
+_OBSERVABLE_TYPE_HINT_RE = re.compile(r"\b(?:Observable|Subject|BehaviorSubject|ReplaySubject)\s*<")
+_OBSERVABLE_INIT_HINT_RE = re.compile(
+    r"\bnew\s+(?:Subject|BehaviorSubject|ReplaySubject)\b"
+    r"|\.pipe\s*\(|\.asObservable\s*\(\s*\)"
+    r"|\b(?:of|from|timer|interval|merge|combineLatest)\s*\("
+)
+
+# Methods that only exist on RxJS Observables, never on Angular Signals.
+_OBSERVABLE_ONLY_METHODS = {"pipe", "subscribe", "toPromise", "forEach"}
+# Methods that only exist on Angular WritableSignals, never on Observables.
+_SIGNAL_ONLY_METHODS = {"set", "update", "asReadonly", "mutate"}
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +342,98 @@ def find_member_accesses(content: str, var_names: list[str]) -> list[tuple[str, 
     return results
 
 
+def extract_reactive_member_kinds(content: str, class_name: str) -> dict[str, str]:
+    """
+    Classify each property declared on a class as "signal" or "observable"
+    based on its type annotation and/or initializer, using heuristics — not
+    a real type-checker. This is what lets the checker catch the exact
+    mistake that shipped in production: calling `.pipe()`/`.subscribe()` on
+    a class member that IS a real member (so member-existence checks pass)
+    but is actually a Signal, not an Observable (or vice versa), e.g.
+    `authService.isLoading.pipe(...)` when `isLoading` is declared as
+    `readonly isLoading = this.loading.asReadonly();` (a Signal<boolean>).
+
+    Returns {member_name: "signal" | "observable"}. Members whose kind can't
+    be confidently determined are omitted entirely — no false positives from
+    ambiguous declarations.
+    """
+    class_match = re.search(rf"class\s+{re.escape(class_name)}\b[^{{]*\{{", content)
+    if not class_match:
+        return {}
+
+    start = class_match.end() - 1
+    depth = 0
+    end: int | None = None
+    for i in range(start, len(content)):
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    if end is None:
+        return {}
+
+    body = content[start + 1 : end]
+    kinds: dict[str, str] = {}
+
+    for m in _PROPERTY_DECL_RE.finditer(body):
+        name = m.group(1)
+        type_hint = m.group("type") or ""
+        init = m.group("init") or ""
+        combined = f"{type_hint} {init}"
+
+        is_signal = bool(
+            _SIGNAL_TYPE_HINT_RE.search(combined) or _SIGNAL_INIT_HINT_RE.search(combined)
+        )
+        is_observable = bool(
+            _OBSERVABLE_TYPE_HINT_RE.search(combined) or _OBSERVABLE_INIT_HINT_RE.search(combined)
+        )
+
+        if is_signal and not is_observable:
+            kinds[name] = "signal"
+        elif is_observable and not is_signal:
+            kinds[name] = "observable"
+        # Ambiguous or neither -> omit, to avoid false positives.
+
+    return kinds
+
+
+def find_chained_member_calls(
+    content: str, var_names: list[str]
+) -> list[tuple[str, str, str, int]]:
+    """
+    Find `varName.member.methodCall(` patterns — e.g.
+    `authService.isLoading.pipe(` — for a set of variable names. This is the
+    two-hop access pattern needed to catch calling a reactive-only method
+    (.pipe/.subscribe/.set/.update) on a specific member of an injected
+    service, as opposed to a direct call on the service itself.
+
+    Returns list of (var_name, member_name, method_name, line_number).
+    """
+    if not var_names:
+        return []
+
+    pattern = re.compile(
+        r"\b("
+        + "|".join(re.escape(v) for v in var_names)
+        + r")\."
+        + "("
+        + _MEMBER_NAME
+        + r")\."
+        + "("
+        + _MEMBER_NAME
+        + r")\s*\("
+    )
+    results: list[tuple[str, str, str, int]] = []
+    for m in pattern.finditer(content):
+        line_no = content.count("\n", 0, m.start()) + 1
+        results.append((m.group(1), m.group(2), m.group(3), line_no))
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -491,5 +615,59 @@ def check_typescript_integrity(
                         ),
                     }
                 )
+
+            # ---------------------------------------------------------------
+            # Signal vs Observable API misuse: authService.isLoading.pipe(...)
+            # where isLoading is a member that EXISTS (so the check above
+            # passes) but is a Signal, not an Observable — or vice versa.
+            # ---------------------------------------------------------------
+            reactive_kinds = extract_reactive_member_kinds(target_content, class_name)
+            if not reactive_kinds:
+                continue
+
+            for _accessed_var, member, method, line_no in find_chained_member_calls(
+                content, [var_name]
+            ):
+                kind = reactive_kinds.get(member)
+                if kind is None:
+                    continue
+
+                if kind == "signal" and method in _OBSERVABLE_ONLY_METHODS:
+                    issues.append(
+                        {
+                            "file": path,
+                            "issue": (
+                                f"Property '{method}' does not exist on type 'Signal' "
+                                f"(line {line_no}): '{member}' on {class_name} is declared as an "
+                                f"Angular Signal, not an RxJS Observable, so '.{method}()' is not "
+                                f"a valid call."
+                            ),
+                            "fix": (
+                                f"In {path}, read the Signal by calling it directly "
+                                f"(e.g. `{var_name}.{member}()`) instead of `.{method}(...)`. "
+                                f"If reactive-stream behavior (e.g. `.pipe()`) is actually needed, "
+                                f"use `toObservable({var_name}.{member})` from "
+                                f"'@angular/core/rxjs-interop' instead of calling '.{method}' "
+                                f"directly on the Signal."
+                            ),
+                        }
+                    )
+                elif kind == "observable" and method in _SIGNAL_ONLY_METHODS:
+                    issues.append(
+                        {
+                            "file": path,
+                            "issue": (
+                                f"Property '{method}' does not exist on type 'Observable' "
+                                f"(line {line_no}): '{member}' on {class_name} is declared as an "
+                                f"RxJS Observable, not an Angular Signal, so '.{method}(...)' is "
+                                f"not a valid call."
+                            ),
+                            "fix": (
+                                f"In {path}, use the Observable's actual API (e.g. `.subscribe(...)` "
+                                f"or `.pipe(...)`) instead of `.{method}(...)`, which is a Signal-only "
+                                f"method."
+                            ),
+                        }
+                    )
 
     return issues

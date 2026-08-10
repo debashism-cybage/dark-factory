@@ -44,6 +44,16 @@ def system_prompt() -> str:
         "20. Every TypeScript file MUST have valid type declarations.\n"
         "21. Lazy-loaded routes MUST point to files that exist.\n"
         "22. Every exported class/function referenced in another file MUST actually be exported.\n"
+        "23. SIGNAL vs OBSERVABLE: before calling a method on a class member from another "
+        "file (e.g. `someService.someProperty.method()`), check the ACTUAL declared type of "
+        "that property in the file you were given. Angular Signals (declared as `signal(...)`, "
+        "`computed(...)`, `.asReadonly()`, or typed `Signal<T>`/`WritableSignal<T>`) are read by "
+        "CALLING them as a function (`someProperty()`), and only support `.set()`/`.update()` "
+        "if writable — they do NOT have `.pipe()`, `.subscribe()`, or any other RxJS Observable "
+        "method. RxJS Observables/Subjects (declared as `new Subject(...)`, `.asObservable()`, "
+        "or typed `Observable<T>`) support `.pipe()`/`.subscribe()` but do NOT have `.set()` or "
+        "`.update()`. Never assume a property is an Observable just because its name ends in "
+        "'$' or because you expect reactive behavior — verify against its actual declaration.\n"
     )
 
 
@@ -265,7 +275,15 @@ def build_validation_system_prompt() -> str:
         "success handler is shown, verify it actually triggers router navigation "
         "(e.g. calls Router.navigate/navigateByUrl or sets a redirect) rather than "
         "just updating authentication state and stopping — auth succeeding without "
-        "navigation is a FAILURE.\n\n"
+        "navigation is a FAILURE.\n"
+        "8. SIGNAL vs OBSERVABLE CHECK: if a file calls `.pipe(`, `.subscribe(`, `.set(`, "
+        "or `.update(` on a property of an injected service/class, look up how that "
+        "property is ACTUALLY declared in the target class shown below. If it's declared "
+        "as a Signal (via `signal(...)`, `computed(...)`, `.asReadonly()`, or typed "
+        "`Signal<T>`) but the calling code uses `.pipe()`/`.subscribe()`, that is a FAIL — "
+        "flag it as 'Property does not exist on type Signal'. If it's declared as an "
+        "Observable/Subject but the calling code uses `.set()`/`.update()`, that is also "
+        "a FAIL.\n\n"
         "Respond with EXACTLY this JSON format:\n"
         '{"status": "PASS"}\n'
         "or\n"
@@ -342,6 +360,12 @@ CHECK FOR
    the component in its imports array".
 7. If any generated file handles authentication success, does it call router
    navigation afterward? If not, flag it as a FAIL.
+8. For any `.pipe(`, `.subscribe(`, `.set(`, or `.update(` call on a service/class
+   property shown above: does the target class actually declare that property as
+   the matching reactive type (Observable for pipe/subscribe, Signal for
+   set/update)? A Signal does not have `.pipe()`/`.subscribe()`; an Observable
+   does not have `.set()`/`.update()`. If mismatched, flag it as a FAIL with
+   issue "Property '<method>' does not exist on type '<Signal|Observable>'".
 
 Return ONLY valid JSON:
 {{"status": "PASS"}}
