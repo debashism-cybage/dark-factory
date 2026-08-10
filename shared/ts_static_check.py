@@ -600,6 +600,86 @@ def extract_input_bindings(content: str, class_name: str) -> dict[str, str]:
     return {m.group(1): m.group(2) for m in _INPUT_DECL_RE.finditer(body)}
 
 
+def resolve_named_import_module(content: str, exported_name: str) -> str | None:
+    """
+    Find the relative module path a given name is imported from, e.g. for
+    `import { Exercise, ExercisesResponse } from '../models/exercise.model';`
+    calling this with exported_name="ExercisesResponse" returns
+    '../models/exercise.model'. Returns None if the name isn't imported via
+    a relative (local) import in this file.
+    """
+    for imp in parse_static_imports(content):
+        for _local, name in imp["named"]:
+            if name == exported_name:
+                return imp["module"]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Typed callback-parameter member access (RxJS .subscribe/.then callbacks)
+# ---------------------------------------------------------------------------
+
+# `(response: ExercisesResponse) => ...` — a single explicitly-typed arrow
+# function parameter, the standard shape of an RxJS `.subscribe(...)` /
+# Promise `.then(...)` success callback.
+_ARROW_TYPED_PARAM_RE = re.compile(
+    r"\(\s*(" + _MEMBER_NAME + r")\s*:\s*(" + _MEMBER_NAME + r")\s*\)\s*=>"
+)
+
+
+def find_member_accesses_with_offsets(
+    content: str, var_names: list[str]
+) -> list[tuple[str, str, int, int]]:
+    """
+    Like find_member_accesses, but also returns each match's character
+    offset (not just its line number), so callers can restrict results to
+    a specific region of the file (e.g. one particular callback's body)
+    without needing to re-slice content and recompute line numbers against
+    a substring.
+
+    Returns list of (var_name, member_name, char_offset, line_number).
+    """
+    if not var_names:
+        return []
+
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(v) for v in var_names) + r")\." + "(" + _MEMBER_NAME + ")"
+    )
+    results: list[tuple[str, str, int, int]] = []
+    for m in pattern.finditer(content):
+        line_no = content.count("\n", 0, m.start()) + 1
+        results.append((m.group(1), m.group(2), m.start(), line_no))
+    return results
+
+
+def extract_callback_typed_params(content: str) -> list[tuple[int, int, str, str]]:
+    """
+    For every RxJS `.subscribe(...)` / Promise `.then(...)` call, find an
+    explicitly-typed arrow-function parameter within its argument list
+    (e.g. `.subscribe({ next: (response: ExercisesResponse) => {...} })`)
+    and return the callback's argument-list character range along with the
+    parameter's name and declared type.
+
+    The range is returned (not just the name/type) so member accesses on
+    that parameter can be checked ONLY within this specific callback's
+    scope, not the whole file — a name like `response` or `err` is commonly
+    reused across multiple, unrelated `.subscribe()` calls in the same
+    component (e.g. `loadExercises()` and `loadMore()` both declare their
+    own `response: ExercisesResponse`), so scoping strictly to the owning
+    callback avoids attributing a member access to the wrong declaration.
+
+    Returns: list of (start, end, param_name, type_name) using the same
+    [start, end) character-offset convention as _find_async_callback_bodies.
+    """
+    results: list[tuple[int, int, str, str]] = []
+    for start, end in _find_async_callback_bodies(content):
+        region = content[start:end]
+        m = _ARROW_TYPED_PARAM_RE.search(region)
+        if m:
+            results.append((start, end, m.group(1), m.group(2)))
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Zoneless change-detection safety
 # ---------------------------------------------------------------------------
@@ -762,6 +842,67 @@ def find_unsafe_zoneless_mutations(
 _SELF_CLASS_DECL_RE = re.compile(r"export\s+(?:default\s+)?(?:abstract\s+)?class\s+(\w+)")
 
 
+def find_duplicate_type_definitions(files: dict[str, str]) -> list[dict[str, Any]]:
+    """
+    Detect the same interface/type name declared in MORE THAN ONE file
+    within the same changeset. TypeScript treats each declaration as a
+    structurally distinct type even if the names match — if one file
+    imports the version from path A and another imports the version from
+    path B, passing a value typed by one into something typed by the other
+    fails to compile (TS2741/TS2322) even though both are named identically
+    and a human skimming the diff would assume they're "the same type".
+
+    This is exactly what happened in PR #35: `src/app/exercises/exercise.model.ts`
+    and `src/app/models/exercise.model.ts` were BOTH newly created in the
+    same PR, both declaring `export interface Exercise { ... }`, but with
+    different fields (`id` vs `exerciseId`). `exercise-card.ts` imported one,
+    `exercises.ts` imported the other, and passing an `Exercise` instance
+    from one to a component expecting the other failed to compile.
+
+    Grounded entirely in the changeset's own content — no LLM guessing, no
+    ticket-specific logic. Runs for every future ticket that creates more
+    than one new type/interface file.
+
+    Returns:
+        List of issue dicts, one per duplicate name found (paired across
+        all files that declare it), in the same {"file", "issue", "fix"}
+        shape as the rest of this module's checks.
+    """
+    declared_in: dict[str, list[str]] = {}
+    for path, content in files.items():
+        for m in _INTERFACE_DECL_RE.finditer(content):
+            declared_in.setdefault(m.group(1), []).append(path)
+        for m in _EXPORT_TYPE_RE.finditer(content):
+            declared_in.setdefault(m.group(1), []).append(path)
+
+    issues: list[dict[str, Any]] = []
+    for type_name, paths in declared_in.items():
+        unique_paths = sorted(set(paths))
+        if len(unique_paths) < 2:
+            continue
+        issues.append(
+            {
+                "file": unique_paths[1],
+                "issue": (
+                    f"Type/interface '{type_name}' is declared in multiple files in this "
+                    f"changeset: {', '.join(unique_paths)}. Even if their fields are "
+                    f"identical today, TypeScript treats these as separate types, and any "
+                    f"code that imports one and passes a value to something expecting the "
+                    f"other will fail to compile (e.g. 'Property X is missing in type "
+                    f"...A.{type_name} but required in type ...B.{type_name}')."
+                ),
+                "fix": (
+                    f"Delete the duplicate '{type_name}' declaration and make every file "
+                    f"that needs it import from a single shared location "
+                    f"(e.g. keep only {unique_paths[0]} and update all other files to "
+                    f"import '{type_name}' from there instead of redeclaring it)."
+                ),
+            }
+        )
+
+    return issues
+
+
 def check_typescript_integrity(
     files: dict[str, str],
     known_paths: set[str],
@@ -790,7 +931,7 @@ def check_typescript_integrity(
         [...], "importingModule": ...} so callers can create the missing file
         instead of only rewriting the importer.
     """
-    issues: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = find_duplicate_type_definitions(files)
     content_cache: dict[str, str | None] = dict(files)
     zoneless_result: dict[str, bool] = {}
 
@@ -910,6 +1051,65 @@ def check_typescript_integrity(
                             ),
                         }
                     )
+
+        # -----------------------------------------------------------------
+        # Typed RxJS/Promise callback-parameter member access, e.g.
+        # `.subscribe({ next: (response: ExercisesResponse) => {
+        #     this.hasNextPage.set(response.hasNextPage); // WRONG: nested
+        #     under response.meta.hasNextPage in the real interface
+        # }})`
+        # This is the exact class of bug in PR #35 (SCRUM-14 attempt #2):
+        # the interface itself was correct, but the code assumed a flatter
+        # shape than the interface actually declares. Distinct from both
+        # the injected-service check (constructor/inject-bound vars) and
+        # the @Input() check (component-property-bound vars) above — this
+        # covers a local callback parameter's own type annotation.
+        # -----------------------------------------------------------------
+        masked_content_for_callbacks = _mask_import_statements(content)
+        for cb_start, cb_end, param_name, type_name in extract_callback_typed_params(
+            masked_content_for_callbacks
+        ):
+            type_module = resolve_named_import_module(content, type_name)
+            if not type_module or not type_module.startswith("."):
+                continue
+
+            resolved_type_path = resolve_module_path(path, type_module, known_paths)
+            if not resolved_type_path:
+                continue
+
+            type_content = get_content(resolved_type_path)
+            if not type_content:
+                continue
+
+            interface_members = extract_interface_members(type_content, type_name)
+            if not interface_members:
+                continue
+
+            for _var, member, offset, line_no in find_member_accesses_with_offsets(
+                masked_content_for_callbacks, [param_name]
+            ):
+                if not (cb_start <= offset < cb_end):
+                    continue
+                if member in interface_members:
+                    continue
+                suggestion = difflib.get_close_matches(member, list(interface_members), n=1)
+                hint = f" Did you mean '{suggestion[0]}'?" if suggestion else ""
+                issues.append(
+                    {
+                        "file": path,
+                        "issue": (
+                            f"Property '{member}' does not exist on type '{type_name}'."
+                            f"{hint} (line {line_no})"
+                        ),
+                        "fix": (
+                            f"In {path}, either use an existing field of {type_name} "
+                            f"(available: {', '.join(sorted(interface_members))}) instead of "
+                            f"'{member}', or check {resolved_type_path} — the field may be "
+                            f"nested under a different property (e.g. inside a 'meta' object) "
+                            f"rather than flat on the top-level response."
+                        ),
+                    }
+                )
 
         # -----------------------------------------------------------------
         # Static imports: does the path resolve? Do named imports exist?

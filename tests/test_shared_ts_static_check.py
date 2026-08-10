@@ -11,16 +11,20 @@ module (see agents/development/handler.py docstring):
 from shared.ts_static_check import (
     check_typescript_integrity,
     expected_missing_path,
+    extract_callback_typed_params,
     extract_class_members,
     extract_exports,
     extract_injected_services,
     extract_input_bindings,
     extract_interface_members,
     extract_reactive_member_kinds,
+    find_duplicate_type_definitions,
+    find_member_accesses_with_offsets,
     is_app_zoneless,
     parse_dynamic_then_imports,
     parse_static_imports,
     resolve_module_path,
+    resolve_named_import_module,
 )
 
 
@@ -172,6 +176,85 @@ class TestExtractInterfaceMembers:
     def test_returns_none_for_missing_interface(self):
         content = "interface Other { x: string; }"
         assert extract_interface_members(content, "Foo") is None
+
+
+class TestFindDuplicateTypeDefinitions:
+    def test_detects_same_interface_name_in_two_files(self):
+        # Reproduces PR #35 exactly: two newly-created files both declare
+        # `Exercise` with different shapes.
+        files = {
+            "src/app/exercises/exercise.model.ts": (
+                "export interface Exercise {\n  id: string;\n  name: string;\n}\n"
+            ),
+            "src/app/models/exercise.model.ts": (
+                "export interface Exercise {\n  exerciseId: string;\n  name: string;\n}\n"
+            ),
+        }
+        issues = find_duplicate_type_definitions(files)
+        assert len(issues) == 1
+        assert "Exercise" in issues[0]["issue"]
+        assert "exercise.model.ts" in issues[0]["issue"]
+
+    def test_detects_duplicate_type_alias(self):
+        files = {
+            "src/app/a.ts": "export type Foo = { x: string };",
+            "src/app/b.ts": "export type Foo = { y: number };",
+        }
+        issues = find_duplicate_type_definitions(files)
+        assert len(issues) == 1
+        assert "Foo" in issues[0]["issue"]
+
+    def test_single_declaration_is_not_flagged(self):
+        files = {
+            "src/app/a.ts": "export interface Exercise { id: string; }",
+            "src/app/b.ts": "export class Something {}",
+        }
+        assert find_duplicate_type_definitions(files) == []
+
+    def test_no_files_no_issues(self):
+        assert find_duplicate_type_definitions({}) == []
+
+
+class TestExtractCallbackTypedParams:
+    def test_finds_typed_subscribe_next_param(self):
+        content = """
+        this.service.getExercises().subscribe({
+            next: (response: ExercisesResponse) => {
+                this.exercises.set(response.data);
+            }
+        });
+        """
+        results = extract_callback_typed_params(content)
+        assert len(results) == 1
+        _, _, param_name, type_name = results[0]
+        assert param_name == "response"
+        assert type_name == "ExercisesResponse"
+
+    def test_no_typed_param_returns_empty(self):
+        content = "this.service.getData().subscribe((response) => { console.log(response); });"
+        assert extract_callback_typed_params(content) == []
+
+
+class TestResolveNamedImportModule:
+    def test_finds_module_for_named_import(self):
+        content = "import { Exercise, ExercisesResponse } from '../models/exercise.model';"
+        assert resolve_named_import_module(content, "ExercisesResponse") == "../models/exercise.model"
+
+    def test_returns_none_for_unimported_name(self):
+        content = "import { Exercise } from '../models/exercise.model';"
+        assert resolve_named_import_module(content, "Nonexistent") is None
+
+
+class TestFindMemberAccessesWithOffsets:
+    def test_returns_offset_and_line(self):
+        content = "const x = 1;\nresponse.hasNextPage;"
+        results = find_member_accesses_with_offsets(content, ["response"])
+        assert len(results) == 1
+        var_name, member, offset, line_no = results[0]
+        assert var_name == "response"
+        assert member == "hasNextPage"
+        assert line_no == 2
+        assert content[offset : offset + len("response")] == "response"
 
 
 class TestExpectedMissingPath:
@@ -465,6 +548,98 @@ class TestCheckTypescriptIntegrityRealWorldBugs:
 
         issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
         assert issues == []
+
+    def test_typed_subscribe_callback_member_access_on_nested_field_ts2339(self):
+        # Reproduces PR #35's second bug exactly: ExercisesResponse nests
+        # hasNextPage/nextCursor under `meta`, but the generated code reads
+        # them as if they were flat on the top-level response.
+        component_content = """
+        import { Component, OnInit, signal } from '@angular/core';
+        import { ExercisesResponse } from '../models/exercise.model';
+
+        export class ExercisesComponent implements OnInit {
+            hasNextPage = signal(false);
+            nextCursor = signal(null);
+
+            loadExercises(): void {
+                this.exerciseService.getExercises().subscribe({
+                    next: (response: ExercisesResponse) => {
+                        this.hasNextPage.set(response.hasNextPage);
+                        this.nextCursor.set(response.nextCursor ?? null);
+                    }
+                });
+            }
+        }
+        """
+        files = {"src/app/exercises/exercises.ts": component_content}
+        known_paths = {
+            "src/app/exercises/exercises.ts",
+            "src/app/models/exercise.model.ts",
+        }
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/models/exercise.model.ts":
+                return (
+                    "export interface ExerciseMeta {\n"
+                    "  total: number;\n"
+                    "  hasNextPage: boolean;\n"
+                    "  nextCursor: string | null;\n"
+                    "}\n"
+                    "export interface ExercisesResponse {\n"
+                    "  success: boolean;\n"
+                    "  meta: ExerciseMeta;\n"
+                    "  data: string[];\n"
+                    "}\n"
+                )
+            return None
+
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+
+        assert len(issues) == 2
+        issue_texts = " ".join(i["issue"] for i in issues)
+        assert "hasNextPage" in issue_texts
+        assert "nextCursor" in issue_texts
+        assert all("ExercisesResponse" in i["issue"] for i in issues)
+
+    def test_typed_subscribe_callback_member_access_on_correct_field_no_issue(self):
+        component_content = """
+        export class ExercisesComponent {
+            loadExercises(): void {
+                this.exerciseService.getExercises().subscribe({
+                    next: (response: ExercisesResponse) => {
+                        this.exercises.set(response.data);
+                    }
+                });
+            }
+        }
+        """
+        files = {"src/app/exercises/exercises.ts": component_content}
+        known_paths = {"src/app/exercises/exercises.ts", "src/app/models/exercise.model.ts"}
+
+        def fetch(path: str) -> str | None:
+            if path == "src/app/models/exercise.model.ts":
+                return "export interface ExercisesResponse {\n  data: string[];\n}\n"
+            return None
+
+        # No import statement for ExercisesResponse in this snippet -> the
+        # type-resolution step can't find it, so nothing should be flagged
+        # (conservative: skip rather than guess).
+        issues = check_typescript_integrity(files, known_paths, fetch_content=fetch)
+        assert issues == []
+
+    def test_duplicate_type_definitions_detected_end_to_end(self):
+        files = {
+            "src/app/exercises/exercise.model.ts": (
+                "export interface Exercise {\n  id: string;\n  name: string;\n}\n"
+            ),
+            "src/app/models/exercise.model.ts": (
+                "export interface Exercise {\n  exerciseId: string;\n  name: string;\n}\n"
+            ),
+        }
+        known_paths = set(files.keys())
+        issues = check_typescript_integrity(files, known_paths, fetch_content=lambda p: None)
+        duplicate_issues = [i for i in issues if "declared in multiple files" in i["issue"]]
+        assert len(duplicate_issues) == 1
 
     def test_newly_created_sibling_file_in_same_changeset_resolves(self):
         # Both files are part of the same changeset (not yet on disk from
