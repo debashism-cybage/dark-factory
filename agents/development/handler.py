@@ -413,11 +413,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     s3 = S3Helper(config.bucket_name)
     table = WorkflowTable(config.table_name)
 
-    # Create feature branch, always syncing with the latest main first if it
-    # already exists (see GitHubClient.ensure_branch/sync_branch_with_base).
-    # This prevents the branch from silently drifting from main across
-    # replan retries, which is what produces PRs with unrelated merge
-    # conflicts by the time they're opened.
+    # Create feature branch. If it already exists, ensure_branch either:
+    #   - resets it to main's tip (if its previous PR was already merged --
+    #     prevents stacking new work onto history main no longer wants,
+    #     which is what produced unresolvable conflicts on feature/SCRUM-16), or
+    #   - syncs it with the latest main (if it's still mid-flight, e.g. an
+    #     adaptive-replan retry), so it never silently drifts from main
+    #     across retries.
+    # See GitHubClient.ensure_branch for the full decision logic.
     branch = f"feature/{ticket_id}"
     branch_sync_result = github.ensure_branch(branch)
     if branch_sync_result and branch_sync_result.get("conflict"):
@@ -425,6 +428,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "Feature branch has a real merge conflict with main — "
             "continuing with existing branch content; PR will likely need "
             "manual conflict resolution",
+            workflow_id=workflow_id,
+            branch=branch,
+        )
+    elif branch_sync_result and branch_sync_result.get("action") == "reset":
+        logger.info(
+            "Feature branch was reset to latest main (previous PR already merged)",
             workflow_id=workflow_id,
             branch=branch,
         )

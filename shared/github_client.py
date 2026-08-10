@@ -312,6 +312,80 @@ class GitHubClient:
     # Write operations (branch, commit, PR)
     # -----------------------------------------------------------------------
 
+    def branch_has_merged_pull_request(self, branch_name: str) -> bool:
+        """
+        Check whether ANY pull request (in any state) from branch_name was
+        ever merged into the base branch.
+
+        Why this matters: a feature branch is meant to carry exactly one
+        ticket's work through exactly one merge. If its PR was already
+        merged and the Development Agent is invoked again for the same
+        ticket (e.g. a re-triggered workflow, or a ticket reopened after
+        being reverted), reusing/continuing to commit to that same branch
+        stacks a second, unrelated set of changes on top of history that
+        has already landed in main — even if main later reverted the merge
+        commit, the branch and main have now diverged in a way that cannot
+        be cleanly auto-merged (main says "delete this code", the branch
+        says "keep extending it"). This is exactly what happened across
+        PRs #15/#18/#20/#21 for feature/SCRUM-16 in angular-dev: PR #18
+        merged the branch, main reverted it, and the branch was reused
+        for two more rounds of unrelated commits, producing a PR with
+        irreconcilable merge conflicts.
+
+        Returns:
+            True if any PR (open, closed, or merged) with this branch as
+            head has a non-null merged_at.
+        """
+        try:
+            prs = self._request(
+                "GET",
+                "/pulls",
+                params={"state": "all", "head": f"{self.owner}:{branch_name}"},
+            )
+        except GitHubAPIError as ex:
+            logger.warning(
+                "Could not check merged-PR history for branch",
+                branch=branch_name,
+                error=str(ex),
+            )
+            return False
+
+        return any(pr.get("merged_at") for pr in (prs or []))
+
+    def reset_branch_to_base(self, branch_name: str, base_branch: str | None = None) -> None:
+        """
+        Force the branch ref to point at base_branch's current tip,
+        discarding any commits the branch previously had.
+
+        This is intentionally destructive, but scoped ONLY to the ephemeral
+        per-ticket working branch (feature/{ticket_id}) created and owned by
+        the Development Agent -- never to base_branch/main. It is the
+        correct action when the branch's prior PR has already been merged
+        (see branch_has_merged_pull_request): that branch's history is
+        already captured in main, so starting the next round of work fresh
+        from main's tip is safe and is what prevents unresolvable merge
+        conflicts from accumulating.
+
+        Args:
+            branch_name: The feature branch to reset.
+            base_branch: Branch to reset from (defaults to main).
+        """
+        base_branch = base_branch or self.default_branch
+        ref = self._request("GET", f"/git/ref/heads/{base_branch}")
+        base_sha = ref["object"]["sha"]
+
+        self._request(
+            "PATCH",
+            f"/git/refs/heads/{branch_name}",
+            body={"sha": base_sha, "force": True},
+        )
+        logger.info(
+            "Branch reset to base tip (previous PR already merged)",
+            branch=branch_name,
+            base=base_branch,
+            new_sha=base_sha,
+        )
+
     def sync_branch_with_base(
         self,
         branch_name: str,
@@ -416,50 +490,77 @@ class GitHubClient:
         self, branch_name: str, base_branch: str | None = None
     ) -> dict[str, Any] | None:
         """
-        Ensure a branch exists. Creates it from base_branch if it doesn't.
+        Ensure a branch exists and is safe to keep working on.
 
-        If the branch already exists, ALWAYS syncs it with the latest
-        base_branch first (see sync_branch_with_base) before returning —
-        this is the "always take latest pull of main before doing anything
-        with GitHub" step, applied generically for every ticket, every
-        Development Agent invocation, and every adaptive-replan retry.
+        If the branch already exists, this checks whether it already had a
+        PR merged into base_branch (see branch_has_merged_pull_request):
+          - If YES: the branch's prior work has already landed in main (or
+            been explicitly reverted there). Continuing to commit on top of
+            it would stack new/unrelated changes onto history main no
+            longer wants, producing unresolvable merge conflicts (this is
+            exactly what happened to feature/SCRUM-16 in angular-dev across
+            PRs #15/#18/#20/#21). The branch is reset to base_branch's
+            current tip instead (see reset_branch_to_base), so the next
+            round of work starts clean.
+          - If NO: the branch is mid-flight (e.g. an adaptive-replan retry
+            on work that hasn't been merged yet), so it is synced with the
+            latest base_branch instead (see sync_branch_with_base) — this
+            is the "always take latest pull of main before doing anything
+            with GitHub" step, applied generically for every ticket.
 
         Args:
             branch_name: Target branch name.
             base_branch: Branch to fork from (defaults to main).
 
         Returns:
-            The sync result dict from sync_branch_with_base if the branch
-            already existed, or None if the branch was newly created (a new
-            branch is created directly from base_branch's current tip, so it
-            is already up to date and needs no separate sync).
+            A dict describing what happened — {"action": "reset", ...} if
+            the branch had a merged PR and was reset to base_branch's tip,
+            or the sync result dict (with an added "action": "synced" key)
+            if the branch was mid-flight and got synced — or None if the
+            branch was newly created (already at base_branch's tip, no
+            further action needed).
         """
         base_branch = base_branch or self.default_branch
 
         # Check if branch already exists
         try:
             self._request("GET", f"/git/ref/heads/{branch_name}")
-            logger.info(
-                "Branch already exists, syncing with latest base branch first",
+        except GitHubAPIError:
+            # Branch does not exist -- create it fresh from base_branch's tip.
+            ref = self._request("GET", f"/git/ref/heads/{base_branch}")
+            sha = ref["object"]["sha"]
+            self._request(
+                "POST",
+                "/git/refs",
+                body={"ref": f"refs/heads/{branch_name}", "sha": sha},
+            )
+            logger.info("Branch created", branch=branch_name, base=base_branch)
+            return None
+
+        if self.branch_has_merged_pull_request(branch_name):
+            logger.warning(
+                "Branch's previous PR was already merged -- resetting to "
+                "latest base instead of reusing stale/merged history",
                 branch=branch_name,
                 base=base_branch,
             )
-            return self.sync_branch_with_base(branch_name, base_branch)
-        except GitHubAPIError:
-            pass
+            self.reset_branch_to_base(branch_name, base_branch)
+            return {
+                "action": "reset",
+                "synced": True,
+                "conflict": False,
+                "alreadyUpToDate": False,
+                "message": "",
+            }
 
-        # Get SHA of base branch
-        ref = self._request("GET", f"/git/ref/heads/{base_branch}")
-        sha = ref["object"]["sha"]
-
-        # Create branch
-        self._request(
-            "POST",
-            "/git/refs",
-            body={"ref": f"refs/heads/{branch_name}", "sha": sha},
+        logger.info(
+            "Branch already exists (no merged PR yet), syncing with latest base branch first",
+            branch=branch_name,
+            base=base_branch,
         )
-        logger.info("Branch created", branch=branch_name, base=base_branch)
-        return None
+        result = self.sync_branch_with_base(branch_name, base_branch)
+        result["action"] = "synced"
+        return result
 
     def commit_file(
         self,
