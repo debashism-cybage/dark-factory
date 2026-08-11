@@ -21,6 +21,7 @@ from agents.development.handler import (
     _attempt_build_fix,
     _attempt_create_missing_module,
     _redirect_integration_issue_to_parent,
+    _run_ci_build_gate,
     lambda_handler,
 )
 
@@ -128,6 +129,16 @@ class TestLambdaHandlerAbortsOnUnrecoverableReviewFailure:
         github.ensure_branch.return_value = None
         github.get_file_content.return_value = "export class WidgetsComponent {}"
         github.ensure_pull_request.return_value = {"number": 1, "url": "http://pr/1"}
+        github.get_branch_head_sha.return_value = "abc123"
+        # Mandatory CI build gate: simulate the real GitHub Actions build
+        # passing on the first poll, so this test can focus purely on the
+        # self-review retry-with-feedback behavior it's actually testing.
+        github.wait_for_ci_build.return_value = {
+            "outcome": "SUCCESS",
+            "runUrl": "http://run/1",
+            "runId": 1,
+            "conclusion": "success",
+        }
 
         bedrock = mock_bedrock_cls.return_value
         bedrock.converse.return_value = "export class WidgetsComponent {}"
@@ -145,6 +156,193 @@ class TestLambdaHandlerAbortsOnUnrecoverableReviewFailure:
         retry_call_kwargs = bedrock.converse.call_args_list[1].kwargs
         assert "truncated/incomplete" in retry_call_kwargs["user_prompt"]
         assert "PREVIOUS ATTEMPT REJECTED" in retry_call_kwargs["user_prompt"]
+
+
+class TestRunCiBuildGate:
+    """
+    Tests for the mandatory, non-negotiable PR build gate: a PR may only be
+    created after the repository's REAL `npx ng build` CI run (not a
+    re-implementation of it — this Lambda has no Node/Angular toolchain)
+    reports success for the exact commit being shipped.
+    """
+
+    def _event(self):
+        return {"workflowId": "WF-TEST", "ticketId": "SCRUM-99"}
+
+    def test_passes_immediately_on_first_green_ci_run(self):
+        bedrock = MagicMock()
+        github = MagicMock()
+        github.get_branch_head_sha.return_value = "sha1"
+        github.ensure_pull_request.return_value = {"number": 5, "url": "http://pr/5"}
+        github.wait_for_ci_build.return_value = {
+            "outcome": "SUCCESS",
+            "runUrl": "http://run/1",
+            "runId": 1,
+            "conclusion": "success",
+        }
+        config = MagicMock(ci_build_workflow_file="pr-build-check.yml")
+
+        result = _run_ci_build_gate(
+            bedrock=bedrock,
+            github=github,
+            branch="feature/SCRUM-99",
+            event=self._event(),
+            ticket_id="SCRUM-99",
+            contract_files=[],
+            validation_checklist=[],
+            generated_files=[],
+            config=config,
+        )
+
+        assert result["passed"] is True
+        assert result["prNumber"] == 5
+        github.ensure_pull_request.assert_called_once()
+        assert github.ensure_pull_request.call_args.kwargs["draft"] is True
+        github.close_pull_request.assert_not_called()
+
+    def test_opens_pr_as_draft_exactly_once_across_fix_rounds(self):
+        # A fresh draft PR must not be re-opened on every retry round -- the
+        # SAME PR should be polled, fixed against, and eventually promoted.
+        bedrock = MagicMock()
+        bedrock.converse.return_value = "export class Fixed {}"
+        github = MagicMock()
+        github.get_branch_head_sha.return_value = "sha1"
+        github.ensure_pull_request.return_value = {"number": 7, "url": "http://pr/7"}
+        github.wait_for_ci_build.side_effect = [
+            {"outcome": "FAILURE", "runUrl": "http://run/1", "runId": 1, "conclusion": "failure"},
+            {"outcome": "SUCCESS", "runUrl": "http://run/2", "runId": 2, "conclusion": "success"},
+        ]
+        github.get_failed_job_log_text.return_value = (
+            "\u2718 [ERROR] TS2339: Property 'x' does not exist on type 'Y'. [plugin angular-compiler]\n"
+            "\n"
+            "    src/app/a.ts:1:1:\n"
+            "      1 \u2502 x\n"
+        )
+        config = MagicMock(ci_build_workflow_file="pr-build-check.yml")
+
+        result = _run_ci_build_gate(
+            bedrock=bedrock,
+            github=github,
+            branch="feature/SCRUM-99",
+            event=self._event(),
+            ticket_id="SCRUM-99",
+            contract_files=[],
+            validation_checklist=[],
+            generated_files=[],
+            config=config,
+        )
+
+        assert result["passed"] is True
+        github.ensure_pull_request.assert_called_once()
+
+    def test_closes_draft_pr_and_reports_failure_after_exhausting_fix_rounds(self):
+        bedrock = MagicMock()
+        bedrock.converse.return_value = "export class StillBroken {}"
+        github = MagicMock()
+        github.get_branch_head_sha.return_value = "sha1"
+        github.ensure_pull_request.return_value = {"number": 9, "url": "http://pr/9"}
+        github.wait_for_ci_build.return_value = {
+            "outcome": "FAILURE",
+            "runUrl": "http://run/1",
+            "runId": 1,
+            "conclusion": "failure",
+        }
+        github.get_failed_job_log_text.return_value = (
+            "\u2718 [ERROR] TS2339: Property 'x' does not exist on type 'Y'. [plugin angular-compiler]\n"
+            "\n"
+            "    src/app/a.ts:1:1:\n"
+            "      1 \u2502 x\n"
+        )
+        config = MagicMock(ci_build_workflow_file="pr-build-check.yml")
+
+        result = _run_ci_build_gate(
+            bedrock=bedrock,
+            github=github,
+            branch="feature/SCRUM-99",
+            event=self._event(),
+            ticket_id="SCRUM-99",
+            contract_files=[],
+            validation_checklist=[],
+            generated_files=[],
+            config=config,
+        )
+
+        assert result["passed"] is False
+        assert result["buildErrors"]
+        # PR must be closed -- never left open, draft or otherwise, in a
+        # state that never passed the real build.
+        github.close_pull_request.assert_called_once()
+        assert github.close_pull_request.call_args.args[0] == 9
+
+    def test_never_opens_a_pr_if_ci_never_confirms_a_result(self):
+        # TIMEOUT/NOT_FOUND on every attempt -- can't confirm PR_READY, so
+        # the gate must still fail closed rather than assume success.
+        bedrock = MagicMock()
+        github = MagicMock()
+        github.get_branch_head_sha.return_value = "sha1"
+        github.ensure_pull_request.return_value = {"number": 3, "url": "http://pr/3"}
+        github.wait_for_ci_build.return_value = {
+            "outcome": "NOT_FOUND",
+            "runUrl": None,
+            "runId": None,
+            "conclusion": None,
+        }
+        config = MagicMock(ci_build_workflow_file="pr-build-check.yml")
+
+        result = _run_ci_build_gate(
+            bedrock=bedrock,
+            github=github,
+            branch="feature/SCRUM-99",
+            event=self._event(),
+            ticket_id="SCRUM-99",
+            contract_files=[],
+            validation_checklist=[],
+            generated_files=[],
+            config=config,
+        )
+
+        assert result["passed"] is False
+        github.close_pull_request.assert_called_once()
+
+    def test_missing_module_error_from_ci_routes_to_create_not_patch(self):
+        bedrock = MagicMock()
+        bedrock.converse.return_value = "export class MissingThing {}"
+        github = MagicMock()
+        github.get_branch_head_sha.return_value = "sha1"
+        github.ensure_pull_request.return_value = {"number": 11, "url": "http://pr/11"}
+        github.file_exists.return_value = False
+        github.get_file_content.return_value = (
+            "import { MissingThing } from './missing-thing';"
+        )
+        github.wait_for_ci_build.side_effect = [
+            {"outcome": "FAILURE", "runUrl": "http://run/1", "runId": 1, "conclusion": "failure"},
+            {"outcome": "SUCCESS", "runUrl": "http://run/2", "runId": 2, "conclusion": "success"},
+        ]
+        github.get_failed_job_log_text.return_value = (
+            "\u2718 [ERROR] TS2307: Cannot find module './missing-thing' or its "
+            "corresponding type declarations. [plugin angular-compiler]\n"
+            "\n"
+            "    src/app/uses-it.ts:1:26:\n"
+            "      1 \u2502 import { MissingThing } from './missing-thing';\n"
+        )
+        config = MagicMock(ci_build_workflow_file="pr-build-check.yml")
+
+        result = _run_ci_build_gate(
+            bedrock=bedrock,
+            github=github,
+            branch="feature/SCRUM-99",
+            event=self._event(),
+            ticket_id="SCRUM-99",
+            contract_files=[],
+            validation_checklist=[],
+            generated_files=[],
+            config=config,
+        )
+
+        assert result["passed"] is True
+        # The missing file must be CREATED, not the importer patched.
+        commit_kwargs = github.commit_file.call_args.kwargs
+        assert commit_kwargs["path"] == "src/app/missing-thing.ts"
 
 
 class TestAttemptCreateMissingModule:

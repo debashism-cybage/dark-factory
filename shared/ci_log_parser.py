@@ -30,10 +30,18 @@ conclusion is always the source of truth for pass/fail).
 """
 
 import re
+from typing import Any
 
-# GitHub Actions job logs prefix every line with an ISO-8601 timestamp.
+# GitHub Actions job logs prefix every line with an ISO-8601 timestamp,
+# e.g. "2026-08-10T15:11:04.3960000Z some log text" or, for a blank log
+# line, just "2026-08-10T15:11:04.3960000Z" with nothing after it. The
+# trailing separator is matched as "[ \t]?" (a single space/tab), NOT
+# "\s?" -- \s also matches '\n', which would silently consume the
+# newline ending a blank line and merge it into the next line, destroying
+# the blank-line separator _ERROR_BLOCK_RE relies on between an error
+# message and its file:line:col block.
 _TIMESTAMP_PREFIX_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s?", re.MULTILINE
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z[ \t]?", re.MULTILINE
 )
 
 # ANSI color escape codes esbuild/ng emit for terminal output.
@@ -59,7 +67,7 @@ _ERROR_BLOCK_RE = re.compile(
 _CANNOT_FIND_MODULE_RE = re.compile(r"Cannot find module ['\"]([^'\"]+)['\"]")
 
 
-def parse_ng_build_errors(log_text: str) -> list[dict[str, str]]:
+def parse_ng_build_errors(log_text: str) -> list[dict[str, Any]]:
     """
     Extract structured compiler errors from raw `ng build` CI log text.
 
@@ -71,22 +79,19 @@ def parse_ng_build_errors(log_text: str) -> list[dict[str, str]]:
     Returns:
         List of {"file": ..., "issue": ..., "fix": ""} dicts, one per
         distinct (file, line, message) error found. Additionally carries
-        "importingModule" when the message is a "Cannot find module"
-        error, so callers can route it the same way as the static
-        checker's MISSING_MODULE issues.
+        "kind": "MISSING_MODULE" and "importingModule" when the message is
+        a "Cannot find module" error, so callers can route it the same way
+        as the static checker's own MISSING_MODULE issues (which also add
+        "requiredExports"/"expectedPath" — left for the caller to fill in,
+        since deriving them requires known_paths this module doesn't have).
     """
     if not log_text:
         return []
 
     cleaned = _ANSI_ESCAPE_RE.sub("", log_text)
     cleaned = _TIMESTAMP_PREFIX_RE.sub("", cleaned)
-    # Collapse the wrapped-message newlines esbuild inserts mid-sentence so
-    # the message reads as one line; _ERROR_BLOCK_RE's message group is
-    # non-greedy up to the blank-line/path marker so this is safe to do
-    # broadly rather than needing to detect wrap points precisely.
-    cleaned = re.sub(r"[ \t]*\n[ \t]*(?=\S)", " ", cleaned)
 
-    issues: list[dict[str, str]] = []
+    issues: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
 
     for match in _ERROR_BLOCK_RE.finditer(cleaned):
@@ -99,7 +104,7 @@ def parse_ng_build_errors(log_text: str) -> list[dict[str, str]]:
             continue
         seen.add(key)
 
-        issue: dict[str, str] = {
+        issue: dict[str, Any] = {
             "file": path,
             "issue": f"{message} (line {line_no})",
             "fix": "",
