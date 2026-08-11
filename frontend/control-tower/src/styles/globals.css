@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: theme('colors.border');
+  }
+
+  body {
+    background-color: theme('colors.background');
+    color: theme('colors.foreground');
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: theme('colors.border');
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.border-light');
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-card/80 backdrop-blur-md border border-border rounded-2xl shadow-card;
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .card-hover {
+    @apply card;
+    @apply hover:border-border-light hover:shadow-card-hover hover:-translate-y-0.5;
+  }
+
+  .card-glow {
+    @apply card;
+    @apply border-primary/30 shadow-glow-md;
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  .card-success {
+    @apply card;
+    @apply border-success/20;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-wide;
+  }
+
+  .badge-running {
+    @apply badge bg-primary/10 text-primary-light border border-primary/20;
+  }
+
+  .badge-completed {
+    @apply badge bg-success/10 text-success-light border border-success/20;
+  }
+
+  .badge-failed {
+    @apply badge bg-error/10 text-error-light border border-error/20;
+  }
+
+  .badge-pending {
+    @apply badge bg-muted/10 text-muted border border-border;
+  }
+
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-[0.15em] text-muted;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(135deg, #60A5FA, #A78BFA);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-success {
+    background: linear-gradient(135deg, #10B981, #34D399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, #3B82F6, #6366F1);
+  }
+
+  .gradient-success {
+    background: linear-gradient(135deg, #10B981, #059669);
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  .bg-radial-fade {
+    background: radial-gradient(ellipse at top, rgba(59, 130, 246, 0.08) 0%, transparent 60%);
+  }
+}

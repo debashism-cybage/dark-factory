@@ -26,13 +26,14 @@ from hashlib import sha256
 from typing import Any
 
 from shared.bedrock_client import BedrockClient
+from shared.ci_log_parser import parse_ng_build_errors
 from shared.config import DevelopmentConfig
 from shared.dynamodb_helper import WorkflowTable
 from shared.github_client import GitHubClient
 from shared.logger import get_logger
 from shared.prompts import development as prompts
 from shared.s3_helper import S3Helper
-from shared.ts_static_check import check_typescript_integrity
+from shared.ts_static_check import check_typescript_integrity, expected_missing_path
 
 logger = get_logger(__name__, agent="development")
 
@@ -564,6 +565,247 @@ def _attempt_build_fix(
 
 
 # ---------------------------------------------------------------------------
+# Mandatory PR build gate
+# ---------------------------------------------------------------------------
+
+# Max number of fix -> push -> re-poll cycles before giving up and reporting
+# failure instead of creating a PR. Deliberately smaller than the internal
+# static/LLM build-validation loop's own max_fix_rounds, since each round
+# here costs a real CI run (minutes), not a Bedrock call (seconds).
+_MAX_CI_GATE_FIX_ROUNDS = 3
+
+# How long to wait for one CI run to complete before treating it as a
+# timeout. angular-dev's pr-build-check.yml is a single `npm ci && ng build`
+# job on ubuntu-latest with npm caching -- comfortably under 5 minutes in
+# practice; 8 minutes leaves headroom without eating the whole Lambda
+# timeout (900s) on one poll cycle when several rounds may be needed.
+_CI_BUILD_TIMEOUT_SECONDS = 480
+
+
+def _run_ci_build_gate(
+    bedrock: BedrockClient,
+    github: GitHubClient,
+    branch: str,
+    event: dict[str, Any],
+    ticket_id: str,
+    contract_files: list[dict[str, Any]],
+    validation_checklist: list[str],
+    generated_files: list[dict[str, Any]],
+    config: DevelopmentConfig,
+) -> dict[str, Any]:
+    """
+    MANDATORY PR BUILD GATE.
+
+    A PR may be created ONLY after the repository's own CI build-check
+    workflow (the exact `npx ng build --configuration production ...`
+    command, executed by GitHub Actions -- not simulated here, since this
+    Lambda has no Node.js/Angular toolchain) reports success for the commit
+    being shipped.
+
+    That workflow (pr-build-check.yml) triggers `on: pull_request`, so a PR
+    must exist for it to run at all. This opens the PR as a DRAFT first —
+    satisfying the trigger — polls the real build result, and only then
+    either promotes it to ready-for-review (pass) or closes it and reports
+    the failure in full (exhausted all fix rounds without a pass). No
+    exceptions: on any outcome other than a clean pass within
+    _MAX_CI_GATE_FIX_ROUNDS, this returns passed=False and the caller MUST
+    NOT create/keep open a non-draft PR.
+
+    Sequence per round:
+        push already happened (either the initial commits, or a prior
+        round's fix commits)
+            -> ensure a draft PR exists (first round) so the workflow has
+               something to trigger against
+            -> poll wait_for_ci_build for that PR's head commit
+            -> SUCCESS: done, return passed=True
+            -> FAILURE: download the failing job's log, parse real
+               `ng build` errors, run them through the SAME fix primitives
+               used by the internal build-validation loop
+               (_attempt_create_missing_module / _attempt_build_fix), push
+               the fixes, loop
+            -> TIMEOUT/NOT_FOUND: treated as a failed round (can't confirm
+               success, so PR_READY cannot be true) but does not consume a
+               fix round the same way, since there's nothing concrete to
+               fix -- retried once, then reported as a blocker
+
+    Returns:
+        {
+            "passed": bool,
+            "reason": str,
+            "buildErrors": list[dict],
+            "generatedFiles": list[dict],  # possibly extended with fixes
+            "prNumber": int | None,
+            "prUrl": str | None,
+            "prIsDraft": bool,
+            "runUrl": str | None,
+            "fixRounds": int,
+        }
+    """
+    workflow_file = config.ci_build_workflow_file
+    pr: dict[str, Any] | None = None
+    last_build_errors: list[dict[str, Any]] = []
+    last_run_url: str | None = None
+
+    for fix_round in range(_MAX_CI_GATE_FIX_ROUNDS + 1):
+        commit_sha = github.get_branch_head_sha(branch)
+
+        if pr is None:
+            pr = github.ensure_pull_request(
+                branch=branch,
+                ticket_id=ticket_id,
+                workflow_id=event.get("workflowId", ""),
+                draft=True,
+            )
+            logger.info(
+                "Opened draft PR to trigger mandatory CI build gate",
+                pr_number=pr["number"],
+                commit_sha=commit_sha,
+            )
+
+        result = github.wait_for_ci_build(
+            commit_sha=commit_sha,
+            workflow_file=workflow_file,
+            timeout_seconds=_CI_BUILD_TIMEOUT_SECONDS,
+        )
+        last_run_url = result.get("runUrl") or last_run_url
+
+        if result["outcome"] == "SUCCESS":
+            logger.info(
+                "MANDATORY BUILD GATE PASSED",
+                commit_sha=commit_sha,
+                run_url=result.get("runUrl"),
+                fix_rounds=fix_round,
+            )
+            return {
+                "passed": True,
+                "reason": "CI_BUILD_SUCCEEDED",
+                "buildErrors": [],
+                "generatedFiles": generated_files,
+                "prNumber": pr["number"],
+                "prUrl": pr["url"],
+                "prIsDraft": True,
+                "runUrl": result.get("runUrl"),
+                "fixRounds": fix_round,
+            }
+
+        if result["outcome"] in ("TIMEOUT", "NOT_FOUND"):
+            logger.warning(
+                "CI build gate could not confirm a result this round",
+                outcome=result["outcome"],
+                commit_sha=commit_sha,
+            )
+            last_build_errors = [
+                {
+                    "file": "",
+                    "issue": (
+                        f"Could not confirm the CI build result for commit {commit_sha} "
+                        f"(outcome: {result['outcome']}). The workflow may not have "
+                        f"triggered, or took longer than {_CI_BUILD_TIMEOUT_SECONDS}s."
+                    ),
+                    "fix": "",
+                }
+            ]
+            continue
+
+        # outcome == "FAILURE" -- fetch the real compiler errors and fix them.
+        run_id = result.get("runId")
+        log_text = github.get_failed_job_log_text(run_id) if run_id else None
+        build_errors = parse_ng_build_errors(log_text or "")
+
+        if not build_errors:
+            # Build failed but the log couldn't be parsed into structured
+            # errors (e.g. unexpected format, or a non-compiler failure
+            # like a network error in npm ci). Nothing concrete to fix
+            # automatically -- report the raw situation rather than guess.
+            build_errors = [
+                {
+                    "file": "",
+                    "issue": (
+                        f"CI build failed for commit {commit_sha} but its errors could "
+                        f"not be parsed from the job log. See {result.get('runUrl')} "
+                        f"for the raw output."
+                    ),
+                    "fix": "",
+                }
+            ]
+
+        last_build_errors = build_errors
+        logger.warning(
+            "MANDATORY BUILD GATE: CI build FAILED, attempting fixes",
+            fix_round=fix_round,
+            error_count=len(build_errors),
+            run_url=result.get("runUrl"),
+        )
+
+        if fix_round == _MAX_CI_GATE_FIX_ROUNDS:
+            break
+
+        for issue in build_errors:
+            if issue.get("kind") == "MISSING_MODULE" and issue.get("file"):
+                issue["expectedPath"] = expected_missing_path(
+                    issue["file"], issue["importingModule"]
+                )
+                issue.setdefault("requiredExports", [])
+                fixed = _attempt_create_missing_module(
+                    bedrock=bedrock,
+                    github=github,
+                    branch=branch,
+                    event=event,
+                    issue=issue,
+                    ticket_id=ticket_id,
+                    validation_checklist=validation_checklist,
+                )
+            elif issue.get("file"):
+                issue = _redirect_integration_issue_to_parent(issue, contract_files)
+                fixed = _attempt_build_fix(
+                    bedrock=bedrock,
+                    github=github,
+                    branch=branch,
+                    event=event,
+                    issue=issue,
+                    ticket_id=ticket_id,
+                    validation_checklist=validation_checklist,
+                )
+            else:
+                fixed = None
+
+            if fixed:
+                generated_files.append(fixed)
+
+    # Exhausted all fix rounds without a passing build.
+    logger.error(
+        "MANDATORY BUILD GATE: exhausted all fix rounds, CI build never passed",
+        fix_rounds=_MAX_CI_GATE_FIX_ROUNDS,
+        remaining_errors=last_build_errors,
+    )
+
+    if pr is not None:
+        error_summary = "\n".join(f"- {e.get('file', '(unknown file)')}: {e['issue']}" for e in last_build_errors)
+        github.close_pull_request(
+            pr["number"],
+            comment=(
+                "Dark Factory closed this draft PR: the mandatory production "
+                f"build (`npx ng build --configuration production ...`) did not "
+                f"pass after {_MAX_CI_GATE_FIX_ROUNDS} automated fix attempts.\n\n"
+                f"Remaining build errors:\n{error_summary}\n\n"
+                f"Last CI run: {last_run_url or '(unavailable)'}"
+            ),
+        )
+
+    return {
+        "passed": False,
+        "reason": "CI_BUILD_NEVER_PASSED",
+        "buildErrors": last_build_errors,
+        "generatedFiles": generated_files,
+        "prNumber": pr["number"] if pr else None,
+        "prUrl": pr["url"] if pr else None,
+        "prIsDraft": True,
+        "runUrl": last_run_url,
+        "fixRounds": _MAX_CI_GATE_FIX_ROUNDS,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Main handler
 # ---------------------------------------------------------------------------
 
@@ -1052,9 +1294,71 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     generated_files.append(fixed)
 
     # -----------------------------------------------------------------------
-    # Create Pull Request
+    # MANDATORY PR BUILD GATE (non-negotiable)
     # -----------------------------------------------------------------------
-    pr = github.ensure_pull_request(
+    # A PR may only be created once the repository's real CI build check
+    # (the actual `npx ng build --configuration production ...` command,
+    # run by GitHub Actions -- not a re-implementation of it in this
+    # Lambda, which has no Node.js/Angular toolchain) has reported success
+    # for the exact commit being shipped. See _run_ci_build_gate for the
+    # full fix -> push -> re-poll cycle and shared/github_client.py's
+    # wait_for_ci_build/get_failed_job_log_text for the polling mechanics.
+    gate_result = _run_ci_build_gate(
+        bedrock=bedrock,
+        github=github,
+        branch=branch,
+        event=event,
+        ticket_id=ticket_id,
+        contract_files=contract_files,
+        validation_checklist=validation_checklist,
+        generated_files=generated_files,
+        config=config,
+    )
+
+    if not gate_result["passed"]:
+        logger.error(
+            "MANDATORY BUILD GATE FAILED — PR will NOT be created",
+            workflow_id=workflow_id,
+            reason=gate_result["reason"],
+            build_errors=gate_result["buildErrors"],
+        )
+
+        table.update_status(
+            workflow_id=workflow_id,
+            status="BUILD_GATE_FAILED",
+            agent="development",
+            artifacts={
+                "reason": "CI_BUILD_GATE_FAILED",
+                "buildGateReport": gate_result,
+                "generatedFiles": generated_files,
+                "branch": branch,
+            },
+        )
+
+        event["status"] = "BUILD_GATE_FAILED"
+        event["currentAgent"] = "development"
+        event["artifacts"] = {
+            "reason": "CI_BUILD_GATE_FAILED",
+            "buildGateReport": gate_result,
+            "generatedFiles": generated_files,
+            "branch": branch,
+        }
+        return event
+
+    generated_files = gate_result["generatedFiles"]
+
+    # -----------------------------------------------------------------------
+    # Create Pull Request (build gate passed — PR_READY == true)
+    # -----------------------------------------------------------------------
+    pr_number = gate_result.get("prNumber")
+    pr_url = gate_result.get("prUrl")
+    if pr_number and gate_result.get("prIsDraft"):
+        # The draft PR opened to let the real CI workflow run is now known
+        # to build cleanly at HEAD — promote it to ready-for-review rather
+        # than leaving it stuck in draft state.
+        github.mark_pull_request_ready(pr_number)
+
+    pr = {"number": pr_number, "url": pr_url} if pr_number else github.ensure_pull_request(
         branch=branch,
         ticket_id=ticket_id,
         workflow_id=workflow_id,
@@ -1071,6 +1375,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "pullRequestNumber": pr["number"],
             "generatedFiles": generated_files,
             "branchSyncConflict": bool(branch_sync_result and branch_sync_result.get("conflict")),
+            "ciBuildGate": {
+                "passed": True,
+                "runUrl": gate_result.get("runUrl"),
+                "fixRounds": gate_result.get("fixRounds", 0),
+            },
         }
     )
 

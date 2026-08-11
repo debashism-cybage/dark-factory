@@ -39,5 +39,5 @@ Thumbs.db
 
 # Misc
 *.log
-frontend/**/*
+frontend/control-tower/node_modules/
 \.kiro

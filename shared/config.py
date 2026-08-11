@@ -81,6 +81,17 @@ class DevelopmentConfig(BaseConfig):
     github_secret_name: str = field(default_factory=lambda: _require("GITHUB_SECRET_NAME"))
     github_repo_owner: str = field(default_factory=lambda: _require("GITHUB_REPO_OWNER"))
     github_repo_name: str = field(default_factory=lambda: _require("GITHUB_REPO_NAME"))
+    # Workflow file (under .github/workflows/) that actually runs the real
+    # production build (e.g. `npx ng build --configuration production`) on
+    # the target repo. The Development Agent polls THIS run's real exit
+    # code as the mandatory PR-creation gate rather than trusting its own
+    # internal (regex + LLM) checks alone -- see _run_ci_build_gate in
+    # agents/development/handler.py. Defaults to the workflow already added
+    # to angular-dev; override per-repo via env var if the target repo uses
+    # a different file name.
+    ci_build_workflow_file: str = field(
+        default_factory=lambda: _optional("CI_BUILD_WORKFLOW_FILE", "pr-build-check.yml")
+    )
 
 
 @dataclass(frozen=True)

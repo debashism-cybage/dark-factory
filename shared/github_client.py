@@ -27,10 +27,13 @@ Usage:
 """
 
 import base64
+import contextlib
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from typing import Any
 
 from shared.logger import get_logger
@@ -352,6 +355,11 @@ class GitHubClient:
 
         return any(pr.get("merged_at") for pr in (prs or []))
 
+    def get_branch_head_sha(self, branch_name: str) -> str:
+        """Return the current commit SHA at the tip of branch_name."""
+        ref = self._request("GET", f"/git/ref/heads/{branch_name}")
+        return ref["object"]["sha"]
+
     def reset_branch_to_base(self, branch_name: str, base_branch: str | None = None) -> None:
         """
         Force the branch ref to point at base_branch's current tip,
@@ -607,6 +615,7 @@ class GitHubClient:
         ticket_id: str,
         workflow_id: str,
         base_branch: str | None = None,
+        draft: bool = False,
     ) -> dict[str, Any]:
         """
         Create a PR or return existing one for the branch.
@@ -616,6 +625,14 @@ class GitHubClient:
             ticket_id: Jira ticket ID for the PR title.
             workflow_id: Workflow ID for traceability.
             base_branch: Target branch (defaults to main).
+            draft: Create as a draft PR. Used by the mandatory CI build
+                gate (see wait_for_ci_build below): the repository's real
+                build-check workflow only triggers `on: pull_request`, so a
+                PR must exist for that check to even run. Opening it as a
+                draft first lets the Development Agent poll the real build
+                result before ever presenting the PR as ready for human
+                review -- if the build fails, the draft PR is closed
+                (see close_pull_request) rather than left open broken.
 
         Returns:
             Dict with 'number' and 'url' keys.
@@ -634,24 +651,219 @@ class GitHubClient:
             return {"number": prs[0]["number"], "url": prs[0]["html_url"]}
 
         # Create new PR
-        pr = self._request(
-            "POST",
-            "/pulls",
-            body={
-                "title": f"[Dark Factory] {ticket_id}",
-                "head": branch,
-                "base": base_branch,
-                "body": (
-                    f"## Dark Factory AI Pull Request\n\n"
-                    f"**Workflow:** {workflow_id}\n\n"
-                    f"**Ticket:** {ticket_id}\n\n"
-                    f"Generated automatically by Dark Factory."
-                ),
-            },
-        )
+        body: dict[str, Any] = {
+            "title": f"[Dark Factory] {ticket_id}",
+            "head": branch,
+            "base": base_branch,
+            "body": (
+                f"## Dark Factory AI Pull Request\n\n"
+                f"**Workflow:** {workflow_id}\n\n"
+                f"**Ticket:** {ticket_id}\n\n"
+                f"Generated automatically by Dark Factory."
+            ),
+        }
+        if draft:
+            body["draft"] = True
 
-        logger.info("PR created", pr_number=pr["number"])
+        pr = self._request("POST", "/pulls", body=body)
+
+        logger.info("PR created", pr_number=pr["number"], draft=draft)
         return {"number": pr["number"], "url": pr["html_url"]}
+
+    def mark_pull_request_ready(self, pr_number: int) -> None:
+        """
+        Convert a draft PR to ready-for-review, once its CI build gate has
+        passed. The REST API represents this as PATCH .../pulls/{number}
+        with draft: false (GitHub's GraphQL-only markPullRequestReadyForReview
+        mutation is the "official" way, but the REST PATCH works and keeps
+        this client entirely on the REST surface it already uses).
+        """
+        self._request("PATCH", f"/pulls/{pr_number}", body={"draft": False})
+        logger.info("PR marked ready for review", pr_number=pr_number)
+
+    def close_pull_request(self, pr_number: int, comment: str | None = None) -> None:
+        """
+        Close a PR without merging it. Used when the mandatory CI build
+        gate never passes within the allowed fix rounds -- the draft PR
+        opened to let the real build check run is closed rather than left
+        open in a permanently-broken state. The feature branch and its
+        commits are NOT deleted, so the failure is still fully inspectable.
+        """
+        if comment:
+            with contextlib.suppress(Exception):
+                self._request(
+                    "POST",
+                    f"/issues/{pr_number}/comments",
+                    body={"body": comment},
+                )
+        self._request("PATCH", f"/pulls/{pr_number}", body={"state": "closed"})
+        logger.info("PR closed (CI build gate did not pass)", pr_number=pr_number)
+
+    # -----------------------------------------------------------------------
+    # CI build gate: poll the repository's real build-check workflow run
+    # -----------------------------------------------------------------------
+
+    def get_workflow_runs_for_commit(
+        self,
+        commit_sha: str,
+        workflow_file: str,
+    ) -> list[dict[str, Any]]:
+        """
+        List runs of a specific workflow file (e.g. 'pr-build-check.yml')
+        whose head_sha matches commit_sha, most recent first.
+
+        Args:
+            commit_sha: The commit SHA to match (e.g. the SHA just pushed).
+            workflow_file: Workflow file name under .github/workflows/,
+                e.g. 'pr-build-check.yml'.
+
+        Returns:
+            List of workflow run dicts (GitHub's raw run objects), empty if
+            none found or the API call fails.
+        """
+        try:
+            result = self._request(
+                "GET",
+                f"/actions/workflows/{workflow_file}/runs",
+                params={"head_sha": commit_sha, "per_page": "10"},
+            )
+        except GitHubAPIError as ex:
+            logger.warning(
+                "Could not list workflow runs for commit",
+                commit_sha=commit_sha,
+                workflow_file=workflow_file,
+                error=str(ex),
+            )
+            return []
+
+        runs = (result or {}).get("workflow_runs", [])
+        return sorted(runs, key=lambda r: r.get("run_number", 0), reverse=True)
+
+    def wait_for_ci_build(
+        self,
+        commit_sha: str,
+        workflow_file: str,
+        timeout_seconds: int = 480,
+        poll_interval_seconds: int = 15,
+        sleep_fn: Callable[[float], None] = time.sleep,
+        now_fn: Callable[[], float] = time.monotonic,
+    ) -> dict[str, Any]:
+        """
+        Poll the repository's real CI build-check workflow until it
+        completes for commit_sha, or until timeout_seconds elapses.
+
+        This is the actual mandatory build gate: rather than re-implementing
+        `npx ng build` inside this Lambda (which has no Node.js/Angular
+        toolchain available), the Development Agent pushes its commit and
+        then waits for GitHub Actions -- the same environment that produces
+        every `ng build` failure reported back by the user -- to report the
+        real, authoritative exit code for that exact command against that
+        exact commit.
+
+        Args:
+            commit_sha: The commit SHA the workflow run must match.
+            workflow_file: Workflow file name, e.g. 'pr-build-check.yml'.
+            timeout_seconds: Give up and report TIMEOUT after this long.
+            poll_interval_seconds: Delay between polls.
+            sleep_fn/now_fn: Injectable for tests -- avoids real sleeping.
+
+        Returns:
+            {"outcome": "SUCCESS" | "FAILURE" | "TIMEOUT" | "NOT_FOUND",
+             "runUrl": str | None, "runId": int | None,
+             "conclusion": str | None}
+        """
+        deadline = now_fn() + timeout_seconds
+
+        while True:
+            runs = self.get_workflow_runs_for_commit(commit_sha, workflow_file)
+            if runs:
+                run = runs[0]
+                status = run.get("status")
+                conclusion = run.get("conclusion")
+
+                if status == "completed":
+                    outcome = "SUCCESS" if conclusion == "success" else "FAILURE"
+                    logger.info(
+                        "CI build gate run completed",
+                        commit_sha=commit_sha,
+                        outcome=outcome,
+                        conclusion=conclusion,
+                        run_url=run.get("html_url"),
+                    )
+                    return {
+                        "outcome": outcome,
+                        "runUrl": run.get("html_url"),
+                        "runId": run.get("id"),
+                        "conclusion": conclusion,
+                    }
+
+                logger.info(
+                    "CI build gate run still in progress",
+                    commit_sha=commit_sha,
+                    status=status,
+                )
+
+            if now_fn() >= deadline:
+                logger.warning(
+                    "CI build gate timed out waiting for workflow run",
+                    commit_sha=commit_sha,
+                    timeout_seconds=timeout_seconds,
+                )
+                return {
+                    "outcome": "TIMEOUT" if runs else "NOT_FOUND",
+                    "runUrl": runs[0].get("html_url") if runs else None,
+                    "runId": runs[0].get("id") if runs else None,
+                    "conclusion": None,
+                }
+
+            sleep_fn(poll_interval_seconds)
+
+    def get_run_jobs(self, run_id: int) -> list[dict[str, Any]]:
+        """List the jobs belonging to a workflow run."""
+        try:
+            result = self._request("GET", f"/actions/runs/{run_id}/jobs")
+        except GitHubAPIError as ex:
+            logger.warning("Could not list jobs for run", run_id=run_id, error=str(ex))
+            return []
+        return (result or {}).get("jobs", [])
+
+    def get_job_log_text(self, job_id: int) -> str | None:
+        """
+        Download the raw log text for a single workflow job.
+
+        GitHub's job-logs endpoint responds with a 302 redirect to a
+        short-lived plain-text blob URL rather than returning JSON, so this
+        bypasses `_request` (which assumes a JSON body) and follows the
+        redirect manually via urllib, which follows redirects by default.
+
+        Returns:
+            The raw log text, or None if it couldn't be downloaded.
+        """
+        url = f"{self.base_url}/actions/jobs/{job_id}/logs"
+        request = urllib.request.Request(url, headers=self.headers)
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as ex:
+            logger.warning("Could not download job log", job_id=job_id, status=ex.code)
+            return None
+        except Exception as ex:
+            logger.warning("Could not download job log", job_id=job_id, error=str(ex))
+            return None
+
+    def get_failed_job_log_text(self, run_id: int) -> str | None:
+        """
+        Convenience helper: find the first failed job in a run and return
+        its raw log text, for feeding into shared.ci_log_parser.
+
+        Returns None if the run has no failed job or the log can't be
+        downloaded.
+        """
+        jobs = self.get_run_jobs(run_id)
+        for job in jobs:
+            if job.get("conclusion") == "failure":
+                return self.get_job_log_text(job["id"])
+        return None
 
 
 # ---------------------------------------------------------------------------
