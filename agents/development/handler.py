@@ -572,14 +572,22 @@ def _attempt_build_fix(
 # failure instead of creating a PR. Deliberately smaller than the internal
 # static/LLM build-validation loop's own max_fix_rounds, since each round
 # here costs a real CI run (minutes), not a Bedrock call (seconds).
-_MAX_CI_GATE_FIX_ROUNDS = 3
+#
+# Budget note: this Lambda's own execution timeout must be able to fit
+# (1 + _MAX_CI_GATE_FIX_ROUNDS) poll cycles of up to _CI_BUILD_TIMEOUT_SECONDS
+# each, plus the Bedrock/GitHub calls each fix round makes. At 2 rounds x
+# 240s = 480s of polling plus fix overhead, the Lambda timeout must be
+# raised well above its previous 300s default -- see deploy.sh /
+# infrastructure config, which must set this function's timeout close to
+# Lambda's hard maximum (900s) for this gate to have any real headroom.
+_MAX_CI_GATE_FIX_ROUNDS = 2
 
 # How long to wait for one CI run to complete before treating it as a
 # timeout. angular-dev's pr-build-check.yml is a single `npm ci && ng build`
-# job on ubuntu-latest with npm caching -- comfortably under 5 minutes in
-# practice; 8 minutes leaves headroom without eating the whole Lambda
-# timeout (900s) on one poll cycle when several rounds may be needed.
-_CI_BUILD_TIMEOUT_SECONDS = 480
+# job on ubuntu-latest with npm caching -- comfortably under 3 minutes in
+# practice. Kept well under the per-round Lambda time budget (see above) so
+# multiple rounds can still fit inside one invocation.
+_CI_BUILD_TIMEOUT_SECONDS = 240
 
 
 def _run_ci_build_gate(
