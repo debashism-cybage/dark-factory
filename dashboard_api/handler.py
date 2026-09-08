@@ -28,7 +28,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     try:
         config = DashboardApiConfig()
-        service = DashboardService(config.state_machine_arn)
+        service = DashboardService(config.state_machine_arn, config.bucket_name)
 
         dashboard = service.get_dashboard()
 

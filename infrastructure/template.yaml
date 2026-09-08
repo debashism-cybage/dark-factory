@@ -117,7 +117,10 @@ Resources:
       Environment:
         Variables:
           STATE_MACHINE_ARN: !Ref WorkflowStateMachine
+          BUCKET_NAME: !Ref ArtifactBucket
       Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref ArtifactBucket
         - Statement:
             - Effect: Allow
               Action:
@@ -136,6 +139,27 @@ Resources:
           Properties:
             Path: /dashboard
             Method: GET
+            RestApiId: !Ref DarkFactoryApi
+
+  ArchitectureTriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub dark-factory-architecture-trigger-${Environment}
+      CodeUri: ./architecture-trigger/
+      Handler: handler.lambda_handler
+      Timeout: 10
+      Environment:
+        Variables:
+          ARCHITECTURE_FUNCTION_NAME: !Ref ArchitectureAgentFunction
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ArchitectureAgentFunction
+      Events:
+        ArchitectureTriggerApi:
+          Type: Api
+          Properties:
+            Path: /architecture/trigger
+            Method: POST
             RestApiId: !Ref DarkFactoryApi
 
   PlanningAgentFunction:
@@ -324,6 +348,10 @@ Outputs:
   DashboardApiEndpoint:
     Description: Dashboard API endpoint
     Value: !Sub https://${DarkFactoryApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/dashboard
+
+  ArchitectureTriggerEndpoint:
+    Description: Architecture trigger API endpoint
+    Value: !Sub https://${DarkFactoryApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/architecture/trigger
   
   StateMachineArn:
     Description: Step Functions state machine ARN

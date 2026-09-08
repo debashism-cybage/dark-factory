@@ -14,6 +14,7 @@ from typing import Any
 import boto3
 
 from shared.logger import get_logger
+from shared.s3_helper import S3Helper
 
 logger = get_logger(__name__, agent="dashboard-api")
 
@@ -68,10 +69,11 @@ IGNORE_RE = re.compile("|".join(IGNORE_PATTERNS))
 class DashboardService:
     """Aggregates workflow data for the dashboard frontend."""
 
-    def __init__(self, state_machine_arn: str) -> None:
+    def __init__(self, state_machine_arn: str, bucket_name: str = "") -> None:
         self.state_machine_arn = state_machine_arn
         self.sfn = boto3.client("stepfunctions")
         self.logs = boto3.client("logs")
+        self.s3 = S3Helper(bucket_name) if bucket_name else None
 
     # -----------------------------------------------------------------------
     # Public API
@@ -140,7 +142,25 @@ class DashboardService:
             "activity": activity,
             "history": history,
             "recoveryHistory": self._extract_recovery_history(hero),
+            "architecture": self._build_architecture_status(),
         }
+
+    # -----------------------------------------------------------------------
+    # Architecture knowledge base status
+    # -----------------------------------------------------------------------
+
+    def _build_architecture_status(self) -> dict[str, Any]:
+        """Report when the architecture knowledge base was last regenerated."""
+        if not self.s3:
+            return {"lastUpdated": None}
+
+        try:
+            last_updated = self.s3.get_last_modified("architecture/")
+        except Exception as ex:
+            logger.warning("Could not read architecture last-modified", error=str(ex))
+            last_updated = None
+
+        return {"lastUpdated": last_updated}
 
     # -----------------------------------------------------------------------
     # Step Functions API calls

@@ -19,6 +19,7 @@ function App() {
     decisions,
     quality,
     executiveSummary,
+    architectureLastUpdated,
     isLoading,
     isDisconnected,
   } = useWorkflows()
@@ -26,7 +27,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header isDisconnected={isDisconnected} />
+      <Header isDisconnected={isDisconnected} architectureLastUpdated={architectureLastUpdated} />
 
       <motion.main
         initial={{ opacity: 0 }}

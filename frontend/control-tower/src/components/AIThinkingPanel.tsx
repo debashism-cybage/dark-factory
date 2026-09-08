@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Brain, Code2, Shield, Rocket, CheckCircle, Loader, User } from 'lucide-react'
+import { Brain, Code2, Shield, Rocket, CheckCircle, Loader } from 'lucide-react'
 import type { AgentName } from '../types'
 
 export interface AgentReasoning {

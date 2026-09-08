@@ -1,11 +1,13 @@
 import { motion } from 'framer-motion'
 import { Factory, WifiOff } from 'lucide-react'
+import { ArchitectureAgentControl } from './ArchitectureAgentControl'
 
 interface Props {
   isDisconnected?: boolean
+  architectureLastUpdated?: string | null
 }
 
-export function Header({ isDisconnected = false }: Props) {
+export function Header({ isDisconnected = false, architectureLastUpdated = null }: Props) {
   return (
     <motion.header
       initial={{ opacity: 0, y: -10 }}
@@ -28,21 +30,25 @@ export function Header({ isDisconnected = false }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {isDisconnected ? (
-            <>
-              <WifiOff className="w-3.5 h-3.5 text-warning" />
-              <span className="text-[11px] text-warning font-medium">Disconnected</span>
-            </>
-          ) : (
-            <>
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
-              </span>
-              <span className="text-[11px] text-muted-light font-medium">Live</span>
-            </>
-          )}
+        <div className="flex items-center gap-6">
+          <ArchitectureAgentControl lastUpdated={architectureLastUpdated} />
+
+          <div className="flex items-center gap-2">
+            {isDisconnected ? (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-warning" />
+                <span className="text-[11px] text-warning font-medium">Disconnected</span>
+              </>
+            ) : (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+                </span>
+                <span className="text-[11px] text-muted-light font-medium">Live</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </motion.header>

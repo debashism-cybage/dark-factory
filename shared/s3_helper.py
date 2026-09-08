@@ -118,6 +118,21 @@ class S3Helper:
         response = self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
         return [obj["Key"] for obj in response.get("Contents", [])]
 
+    def get_last_modified(self, prefix: str = "") -> str | None:
+        """
+        Return the most recent LastModified timestamp (ISO8601, UTC) of any
+        object under the given prefix, or None if no objects exist.
+
+        Used by the dashboard to show when the architecture knowledge base
+        (or any other artifact set) was last regenerated.
+        """
+        response = self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+        contents = response.get("Contents", [])
+        if not contents:
+            return None
+        latest = max(obj["LastModified"] for obj in contents)
+        return latest.isoformat()
+
     def delete_object(self, key: str) -> None:
         """Delete an object from the bucket."""
         self.client.delete_object(Bucket=self.bucket, Key=key)

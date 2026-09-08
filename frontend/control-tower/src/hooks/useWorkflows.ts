@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { WorkflowEvent, WorkflowStage, WorkflowHistoryItem } from '../types'
+import type { WorkflowEvent, WorkflowStage, WorkflowHistoryItem, AgentName } from '../types'
 import type { AgentReasoning } from '../components/AIThinkingPanel'
 import type { AIDecision } from '../components/AIDecisions'
 import { getDashboard } from '../services/dashboardService'
@@ -12,6 +12,7 @@ interface UseWorkflowsResult {
   decisions: AIDecision[]
   quality: any
   executiveSummary: any
+  architectureLastUpdated: string | null
   isLoading: boolean
   isDisconnected: boolean
 }
@@ -23,6 +24,7 @@ export function useWorkflows(): UseWorkflowsResult {
   const [decisions, setDecisions] = useState<AIDecision[]>([])
   const [quality, setQuality] = useState<any>(null)
   const [executiveSummary, setExecutiveSummary] = useState<any>(null)
+  const [architectureLastUpdated, setArchitectureLastUpdated] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isDisconnected, setIsDisconnected] = useState(false)
   const intervalRef = useRef<number | null>(null)
@@ -42,6 +44,7 @@ export function useWorkflows(): UseWorkflowsResult {
       setDecisions(decisionItems)
       setQuality(data.quality || null)
       setExecutiveSummary(data.executiveSummary || null)
+      setArchitectureLastUpdated(data.architecture?.lastUpdated ?? null)
       setIsDisconnected(false)
       setIsLoading(false)
     } catch {
@@ -58,7 +61,17 @@ export function useWorkflows(): UseWorkflowsResult {
     }
   }, [fetchDashboard])
 
-  return { activeWorkflow, history, reasoning, decisions, quality, executiveSummary, isLoading, isDisconnected }
+  return {
+    activeWorkflow,
+    history,
+    reasoning,
+    decisions,
+    quality,
+    executiveSummary,
+    architectureLastUpdated,
+    isLoading,
+    isDisconnected,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +132,7 @@ function mapHistory(history: any[]): WorkflowHistoryItem[] {
 
 function mapActivityToReasoning(activity: any[], pipeline: any[]): AgentReasoning[] {
   const agentGroups: Record<string, any[]> = {}
-  const agentOrder = ['planning', 'development', 'validation', 'release']
+  const agentOrder: AgentName[] = ['planning', 'development', 'validation', 'release']
 
   for (const item of activity || []) {
     const agent = item.agent || ''

@@ -8,4 +8,6 @@ export const API_BASE_URL =
 
 export const DASHBOARD_ENDPOINT = `${API_BASE_URL}/dashboard`
 
+export const ARCHITECTURE_TRIGGER_ENDPOINT = `${API_BASE_URL}/architecture/trigger`
+
 export const POLL_INTERVAL_MS = 3000

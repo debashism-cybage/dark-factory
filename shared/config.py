@@ -124,3 +124,24 @@ class DashboardApiConfig(BaseConfig):
     """Configuration for Dashboard API."""
 
     state_machine_arn: str = field(default_factory=lambda: _require("STATE_MACHINE_ARN"))
+    # Optional: when set, the dashboard also reports when the architecture
+    # knowledge base (S3 "architecture/" prefix) was last regenerated.
+    # Falls back to omitting that field if unset, so existing deployments
+    # keep working without redeploying with a new required variable.
+    bucket_name: str = field(default_factory=lambda: _optional("BUCKET_NAME"))
+
+
+@dataclass(frozen=True)
+class ArchitectureTriggerConfig(BaseConfig):
+    """
+    Configuration for the Architecture Trigger Lambda.
+
+    Backs POST /architecture/trigger — a thin Lambda invoked from the
+    dashboard's "Regenerate Architecture" button. It fires an asynchronous
+    (Event) invocation of the Architecture Agent Lambda and returns
+    immediately, since the agent itself can take up to 15 minutes.
+    """
+
+    architecture_function_name: str = field(
+        default_factory=lambda: _require("ARCHITECTURE_FUNCTION_NAME")
+    )

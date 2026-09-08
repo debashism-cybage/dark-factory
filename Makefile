@@ -17,13 +17,13 @@ install:
 	$(PIP) install -r requirements-dev.txt
 
 lint:
-	ruff check shared/ agents/ workflow-starter/
-	ruff format --check shared/ agents/ workflow-starter/
+	ruff check shared/ agents/ workflow-starter/ architecture-trigger/
+	ruff format --check shared/ agents/ workflow-starter/ architecture-trigger/
 	mypy shared/ --ignore-missing-imports
 
 format:
-	ruff check --fix shared/ agents/ workflow-starter/
-	ruff format shared/ agents/ workflow-starter/
+	ruff check --fix shared/ agents/ workflow-starter/ architecture-trigger/
+	ruff format shared/ agents/ workflow-starter/ architecture-trigger/
 
 test:
 	pytest tests/ -v --cov=shared --cov=agents --cov=workflow-starter --cov-report=term-missing

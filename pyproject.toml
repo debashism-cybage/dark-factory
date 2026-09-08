@@ -20,7 +20,7 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["shared", "agents", "workflow-starter"]
+src = ["shared", "agents", "workflow-starter", "architecture-trigger"]
 
 [tool.ruff.lint]
 select = [
