@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Native Feature Delivery | Cybage Engineering</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f7fa;color:#1a2332;display:flex;min-height:100vh;font-size:14px}
+#sidebar{width:252px;min-width:252px;background:#0F3460;color:#fff;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:100;display:flex;flex-direction:column}
+#sidebar::-webkit-scrollbar{width:3px}
+#sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2)}
+.sb-header{padding:18px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.sb-logo{font-size:10px;font-weight:800;letter-spacing:2.5px;color:#90CAF9;text-transform:uppercase}
+.sb-title{font-size:13px;font-weight:700;color:#fff;margin-top:5px;line-height:1.4}
+.sb-ver{font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px}
+.sb-nav{padding:8px 0;flex:1}
+.sb-group{padding:12px 16px 3px;font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.3)}
+.sb-link{display:block;padding:8px 16px;font-size:12px;color:rgba(255,255,255,0.7);text-decoration:none;cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+.sb-link:hover{background:rgba(255,255,255,0.07);color:#fff}
+.sb-link.active{background:rgba(255,255,255,0.11);color:#fff;border-left-color:#29B6F6;font-weight:600}
+#main{margin-left:252px;flex:1;min-height:100vh}
+.sec{display:none}
+.sec.active{display:block}
+.sec-hdr{background:linear-gradient(135deg,#0F3460 0%,#1565C0 100%);color:#fff;padding:32px 44px 26px}
+.sec-tag{font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:7px}
+.sec-hdr h2{font-size:26px;font-weight:800;line-height:1.3}
+.sec-hdr p{font-size:14px;color:rgba(255,255,255,0.8);margin-top:9px;line-height:1.65;max-width:660px}
+.sec-body{padding:32px 44px;max-width:920px}
+.card{background:#fff;border-radius:10px;padding:22px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,0.07);border:1px solid #e8ecf0}
+.card h3{font-size:15px;font-weight:700;color:#0F3460;margin-bottom:10px}
+.card h4{font-size:13px;font-weight:700;color:#1565C0;margin:14px 0 7px}
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.3px}
+.b-opus{background:#EDE7F6;color:#4527A0}
+.b-sonnet{background:#E0F2F1;color:#00695C}
+.b-gate{background:#FFF3E0;color:#E65100}
+.b-ok{background:#E8F5E9;color:#1B5E20}
+.b-warn{background:#FFF8E1;color:#F57F17}
+.b-danger{background:#FFEBEE;color:#B71C1C}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0}
+th{background:#0F3460;color:#fff;padding:9px 13px;text-align:left;font-size:11px;font-weight:700}
+td{padding:8px 13px;border-bottom:1px solid #e8ecf0;vertical-align:top;line-height:1.5}
+tr:hover td{background:#f8f9ff}
+.checklist{list-style:none;margin:8px 0}
+.checklist li{display:flex;align-items:flex-start;padding:7px 0;border-bottom:1px solid #f0f3f6;gap:9px}
+.checklist li:last-child{border-bottom:none}
+.checklist input[type=checkbox]{width:16px;height:16px;margin-top:2px;flex-shrink:0;accent-color:#1565C0;cursor:pointer}
+.checklist label{font-size:13px;cursor:pointer;line-height:1.5;color:#1a2332}
+.checklist input:checked+label{text-decoration:line-through;color:#90A4AE}
+.cl-group{background:#f8f9ff;border-radius:8px;padding:14px;margin-bottom:12px;border-left:3px solid #1565C0}
+.cl-group.sec-g{border-left-color:#C62828}
+.cl-group.qual-g{border-left-color:#2E7D32}
+.cl-group.obs-g{border-left-color:#F57F17}
+.cl-group.doc-g{border-left-color:#6A1B9A}
+.cl-group.tech-g{border-left-color:#00838F}
+.cl-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cl-hdr h4{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#0F3460}
+.cl-prog{font-size:11px;color:#1565C0;font-weight:700}
+.prog-wrap{background:#e8ecf0;border-radius:3px;height:5px;margin:4px 0 10px}
+.prog-bar{background:linear-gradient(90deg,#1565C0,#29B6F6);height:5px;border-radius:3px;transition:width .3s}
+.phase-card{border-radius:10px;margin-bottom:14px;overflow:hidden;border:1px solid #e8ecf0}
+.ph-hdr{padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none}
+.ph-num{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;background:rgba(255,255,255,0.22)}
+.ph-info .ph-title{font-size:15px;font-weight:700;color:#fff}
+.ph-info .ph-sub{font-size:11px;color:rgba(255,255,255,0.65);margin-top:2px}
+.ph-chev{margin-left:auto;color:rgba(255,255,255,0.6);font-size:18px;transition:transform .2s}
+.phase-card.open .ph-chev{transform:rotate(180deg)}
+.ph-body{background:#fff;padding:22px;display:none}
+.ph-body.open{display:block}
+.ph0 .ph-hdr{background:#1565C0}.ph1 .ph-hdr{background:#0277BD}.ph2 .ph-hdr{background:#00838F}
+.ph3 .ph-hdr{background:#2E7D32}.ph4 .ph-hdr{background:#558B2F}.ph5 .ph-hdr{background:#E65100}.ph6 .ph-hdr{background:#6A1B9A}
+.prompt-wrap{background:#1a2332;border-radius:8px;padding:14px 16px;margin:10px 0;position:relative}
+.prompt-wrap pre{color:#a8d8f0;font-size:11.5px;font-family:'Fira Code','Courier New',monospace;white-space:pre-wrap;word-wrap:break-word;line-height:1.7}
+.copy-btn{position:absolute;top:9px;right:10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.65);border-radius:4px;padding:3px 9px;font-size:10px;cursor:pointer;transition:all .15s}
+.copy-btn:hover{background:rgba(255,255,255,0.18);color:#fff}
+.copy-btn.copied{background:rgba(0,200,100,0.15);color:#00C864;border-color:rgba(0,200,100,0.3)}
+.ex-btn{display:flex;align-items:center;gap:7px;padding:9px 13px;background:#E8F4FD;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;color:#1565C0;margin:10px 0;border:none;width:100%;text-align:left}
+.ex-btn:hover{background:#BBDEFB}
+.ex-block{background:#F8FBFF;border:1px solid #BBDEFB;border-radius:8px;padding:16px;margin-bottom:10px;display:none}
+.ex-block.open{display:block}
+.ex-label{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#1565C0;margin-bottom:8px}
+.ex-block code{font-family:'Fira Code','Courier New',monospace;font-size:11.5px;background:#fff;padding:10px;border-radius:5px;display:block;border:1px solid #E3F2FD;white-space:pre-wrap;color:#1a2332;line-height:1.6}
+.anti-item{background:#fff;border-radius:8px;border-left:4px solid #C62828;margin-bottom:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+.anti-hdr{padding:11px 14px;cursor:pointer;display:flex;align-items:flex-start;gap:10px}
+.anti-code{font-size:10px;font-weight:800;color:#C62828;white-space:nowrap;padding-top:1px;min-width:72px}
+.anti-title{font-size:13px;font-weight:600;color:#1a2332;flex:1}
+.anti-body{padding:0 14px 12px 92px;font-size:12px;color:#546E7A;line-height:1.6;display:none}
+.anti-body.open{display:block}
+.alert{border-radius:7px;padding:12px 14px;margin:12px 0;display:flex;gap:10px;align-items:flex-start;font-size:12px;line-height:1.55}
+.al-info{background:#E3F2FD;border-left:3px solid #1565C0}
+.al-warn{background:#FFF8E1;border-left:3px solid #FFC107}
+.al-danger{background:#FFEBEE;border-left:3px solid #C62828}
+.al-ok{background:#E8F5E9;border-left:3px solid #2E7D32}
+.stack-layer{border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start}
+.sl-req{background:#E3F2FD;border-left:4px solid #1565C0}
+.sl-tech{background:#E8F5E9;border-left:4px solid #2E7D32}
+.sl-code{background:#FFF3E0;border-left:4px solid #E65100}
+.stack-layer h4{font-size:13px;font-weight:700;color:#0F3460}
+.stack-layer p{font-size:12px;color:#546E7A;margin-top:3px;line-height:1.5}
+.stack-layer ul{font-size:11px;color:#546E7A;margin-top:5px;padding-left:14px}
+.stack-layer ul li{margin-bottom:2px}
+.model-card{border-radius:10px;overflow:hidden;border:2px solid transparent;margin-bottom:14px}
+.m-opus{border-color:#7C4DFF}
+.m-sonnet{border-color:#00897B}
+.m-hdr{padding:16px 18px;display:flex;align-items:center;gap:13px}
+.m-icon{width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.m-opus .m-icon{background:#EDE7F6}
+.m-sonnet .m-icon{background:#E0F2F1}
+.m-opus .m-hdr h3{font-size:17px;font-weight:800;color:#4527A0}
+.m-sonnet .m-hdr h3{font-size:17px;font-weight:800;color:#00695C}
+.m-hdr p{font-size:12px;color:#546E7A;margin-top:3px}
+.m-body{padding:0 18px 18px}
+.decision-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.d-card{background:#fff;border-radius:8px;border:1px solid #e8ecf0;padding:14px;cursor:pointer;transition:all .15s}
+.d-card:hover{border-color:#1565C0;box-shadow:0 2px 8px rgba(21,101,192,0.1)}
+.d-card h4{font-size:12px;font-weight:700;color:#0F3460;margin-bottom:6px}
+.d-card p{font-size:11px;color:#546E7A;line-height:1.4}
+.d-card .d-model{margin-top:8px}
+.env-tabs{display:flex;gap:7px;margin-bottom:14px}
+.env-tab{padding:7px 16px;border-radius:6px;border:2px solid #e8ecf0;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#546E7A;transition:all .15s}
+.env-tab.active{background:#0F3460;color:#fff;border-color:#0F3460}
+.env-content{display:none}
+.env-content.active{display:block}
+.esc-card{background:#fff;border-radius:10px;border-left:4px solid #F57F17;padding:16px 18px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+.esc-card.crit{border-left-color:#C62828}
+.esc-card.inf{border-left-color:#1565C0}
+.esc-trigger{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#E65100;margin-bottom:5px}
+.esc-card.crit .esc-trigger{color:#C62828}
+.esc-card.inf .esc-trigger{color:#1565C0}
+.esc-title{font-size:14px;font-weight:700;color:#0F3460;margin-bottom:9px}
+.stage-card{background:#fff;border-radius:10px;border:1px solid #e8ecf0;overflow:hidden;margin-bottom:12px}
+.st-hdr{padding:12px 18px;display:flex;align-items:center;gap:12px;background:#f8f9ff}
+.st-num{width:30px;height:30px;border-radius:50%;background:#0F3460;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0}
+.st-hdr h3{font-size:14px;font-weight:700;color:#0F3460;flex:1}
+.st-time{font-size:11px;color:#90A4AE;font-weight:600}
+.st-body{padding:12px 18px}
+.hero{background:linear-gradient(135deg,#0F3460 0%,#1565C0 60%,#0277BD 100%);padding:44px;color:#fff}
+.hero .ver-chip{display:inline-block;background:rgba(255,255,255,0.14);border-radius:20px;padding:4px 13px;font-size:11px;font-weight:700;margin-bottom:16px}
+.hero h1{font-size:30px;font-weight:900;line-height:1.2;margin-bottom:12px}
+.hero>p{font-size:15px;color:rgba(255,255,255,0.83);max-width:640px;line-height:1.7}
+.p-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:28px}
+.p-card{background:rgba(255,255,255,0.09);border-radius:9px;padding:16px;border:1px solid rgba(255,255,255,0.13)}
+.p-card .p-ico{font-size:22px;margin-bottom:8px}
+.p-card h3{font-size:13px;font-weight:700;margin-bottom:5px}
+.p-card p{font-size:11px;color:rgba(255,255,255,0.73);line-height:1.5}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ul.plain li{font-size:12px;color:#546E7A;padding:4px 0;display:flex;gap:7px;line-height:1.5}
+ul.plain li::before{content:'→';color:#1565C0;font-weight:700;flex-shrink:0}
+ul.plain{list-style:none}
+ol.steps li{font-size:12px;color:#546E7A;padding:4px 0;line-height:1.5}
+.divider{height:1px;background:#e8ecf0;margin:20px 0}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:#EEF2FF;color:#3949AB;margin:2px 3px 2px 0}
+.hl-table td:first-child{font-weight:600;color:#0F3460;white-space:nowrap}
+.gate-card{background:#fff;border-radius:10px;border:1px solid #e8ecf0;padding:18px;margin-bottom:12px;display:flex;gap:16px;align-items:flex-start}
+.gate-num{width:36px;height:36px;border-radius:8px;background:#0F3460;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0}
+.gate-info h4{font-size:14px;font-weight:700;color:#0F3460;margin-bottom:4px}
+.gate-info p{font-size:12px;color:#546E7A;line-height:1.5}
+.metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.m-stat{background:#fff;border-radius:9px;padding:16px;border:1px solid #e8ecf0;text-align:center}
+.m-stat .ms-val{font-size:26px;font-weight:900;color:#0F3460}
+.m-stat .ms-label{font-size:11px;color:#90A4AE;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+.m-stat .ms-target{font-size:10px;color:#2E7D32;font-weight:700;margin-top:2px}
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <div class="sb-header">
+    <div class="sb-logo">Cybage Engineering</div>
+    <div class="sb-title">AI-Native Feature Delivery</div>
+    <div class="sb-ver">v1.2 · Interactive Guide</div>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-group">Start here</div>
+    <a class="sb-link active" onclick="show('overview')">🏠 Overview &amp; Philosophy</a>
+    <a class="sb-link" onclick="show('pf')">📦 Product Function</a>
+    <div class="sb-group">Context &amp; Design</div>
+    <a class="sb-link" onclick="show('context')">🗂 Context Stack (FCD)</a>
+    <a class="sb-link" onclick="show('model')">🤖 Model Selection</a>
+    <a class="sb-link" onclick="show('spec')">📐 Tech Spec Standard</a>
+    <div class="sb-group">Delivery</div>
+    <a class="sb-link" onclick="show('lifecycle')">🔄 Delivery Lifecycle</a>
+    <a class="sb-link" onclick="show('gates')">🧪 Quality Gates</a>
+    <div class="sb-group">Governance</div>
+    <a class="sb-link" onclick="show('dod')">✅ Definition of Done</a>
+    <a class="sb-link" onclick="show('dor')">🚦 Definition of Readiness</a>
+    <a class="sb-link" onclick="show('escalation')">⚡ Escalation Paths</a>
+    <div class="sb-group">Improvement</div>
+    <a class="sb-link" onclick="show('metrics')">📊 Process Metrics</a>
+    <a class="sb-link" onclick="show('adoption')">🚀 Adoption Ramp-Up</a>
+    <div class="sb-group">Reference</div>
+    <a class="sb-link" onclick="show('prompts')">📝 Prompt Library</a>
+    <a class="sb-link" onclick="show('antipatterns')">🚫 Anti-Patterns</a>
+  </div>
+</div>
+<div id="main">
+
+<!-- ===== OVERVIEW ===== -->
+<div id="sec-overview" class="sec active">
+  <div class="hero">
+    <div class="ver-chip">v1.2 · Engineering Excellence</div>
+    <h1>AI-Native Feature Delivery</h1>
+    <p>A context-first model where AI acts as a co-engineer across the full feature lifecycle — not a typing accelerant. AI output quality is bounded by context quality. Your investment is in assembling context, not writing code faster.</p>
+    <div class="p-grid">
+      <div class="p-card"><div class="p-ico">📋</div><h3>Context First</h3><p>Every feature begins with a Feature Context Document — three layers of structured input before any AI generation starts.</p></div>
+      <div class="p-card"><div class="p-ico">🤝</div><h3>AI Generates, Humans Decide</h3><p>Every gate has a human accountable for the output. AI produces artefacts; engineers approve them.</p></div>
+      <div class="p-card"><div class="p-ico">🔒</div><h3>Gate Before Generate</h3><p>No phase begins without the prior gate signed off. Sequence is enforced by process, not by trust.</p></div>
+    </div>
+  </div>
+  <div class="sec-body">
+    <div class="row2">
+      <div class="card">
+        <h3>Why this model</h3>
+        <p style="font-size:13px;color:#546E7A;line-height:1.6">Teams that adopt AI tools without changing their process see 10–20% productivity gains — real, but not transformational. This model targets 3–5× throughput on greenfield features by shifting the constraint from <em>writing code</em> to <em>writing context</em>. The expensive thinking happens once, in a structured document. AI then executes against that document many times.</p>
+      </div>
+      <div class="card">
+        <h3>What changes for engineers</h3>
+        <ul class="plain" style="margin-top:4px">
+          <li>Stories are replaced by Product Functions (end-to-end capability slices)</li>
+          <li>Code writing is preceded by context assembly and design review</li>
+          <li>AI generates implementation; you validate it against the spec</li>
+          <li>Quality gates are automated and hard-blocking, not advisory</li>
+          <li>Reviews focus on intent and design, not syntax</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h3>At a glance</h3>
+      <table>
+        <tr><th>Element</th><th>Count</th><th>Purpose</th></tr>
+        <tr><td>Delivery phases</td><td><strong>7</strong> (Phase 0–6)</td><td>Context → Planning → HLD → LLD → Code → Testing → PR</td></tr>
+        <tr><td>Quality gates</td><td><strong>5</strong></td><td>Linting · CodeRabbit · Claude Security · Coverage · Dependency scan</td></tr>
+        <tr><td>Environment DoR checkpoints</td><td><strong>3</strong></td><td>Lower→QA · QA→Pre-prod · Pre-prod→Prod</td></tr>
+        <tr><td>AI models in use</td><td><strong>2</strong></td><td>Opus (reasoning) · Sonnet (generation)</td></tr>
+        <tr><td>Anti-patterns to avoid</td><td><strong>11</strong></td><td>Process failure modes that erode the model's value</td></tr>
+        <tr><td>Adoption stages</td><td><strong>4</strong></td><td>Pilot → Expansion → Full team → Optimisation</td></tr>
+      </table>
+    </div>
+    <div class="alert al-ok">✅ <div><strong>Worked example throughout:</strong> A fictional Product Function — <em>"Enterprise SSO with Scoped JWT"</em> — runs through every relevant section so you can see the model applied to a realistic scenario, not abstract theory.</div></div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button onclick="show('pf')" style="background:#0F3460;color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">Start: Product Function →</button>
+      <button onclick="show('lifecycle')" style="background:#fff;color:#0F3460;border:2px solid #0F3460;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">Go to Lifecycle →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PRODUCT FUNCTION ===== -->
+<div id="sec-pf" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Foundation</div>
+    <h2>Product Function (PF)</h2>
+    <p>The atomic unit of delivery in this model. A complete, independently deployable capability from the user's perspective — not a technical subtask.</p>
+  </div>
+  <div class="sec-body">
+    <div class="row2">
+      <div class="card">
+        <h3>✅ A Product Function IS</h3>
+        <ul class="plain">
+          <li>Independently testable end-to-end</li>
+          <li>Independently deployable (or feature-flaggable)</li>
+          <li>Traceable to a business outcome</li>
+          <li>Completable within one delivery iteration</li>
+          <li>Understood by the user, not just the team</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>❌ A Product Function is NOT</h3>
+        <ul class="plain">
+          <li>"Create auth controller" — technical subtask</li>
+          <li>"Add unit tests for user service" — QA-only task</li>
+          <li>"Refactor database layer" — internal rework</li>
+          <li>Any task spanning 3+ services and 2+ teams</li>
+          <li>A JIRA story decomposed from a subtask</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Good vs Bad Examples</h3>
+      <table>
+        <tr><th>Statement</th><th>PF?</th><th>Reason</th></tr>
+        <tr><td>"User authenticates via SSO and receives a scoped JWT"</td><td><span class="badge b-ok">✓ YES</span></td><td>User-centred, independently testable, clear outcome</td></tr>
+        <tr><td>"Implement Helm chart for auth service"</td><td><span class="badge b-danger">✗ NO</span></td><td>Infrastructure task; no user-facing outcome</td></tr>
+        <tr><td>"User receives email notification on failed login after 3 attempts"</td><td><span class="badge b-ok">✓ YES</span></td><td>Complete user journey, observable, deployable alone</td></tr>
+        <tr><td>"Add Redis caching to session store"</td><td><span class="badge b-danger">✗ NO</span></td><td>Performance enhancement; not independently meaningful</td></tr>
+        <tr><td>"Admin can revoke a user's active session from the console"</td><td><span class="badge b-ok">✓ YES</span></td><td>Admin user journey, testable, real outcome</td></tr>
+      </table>
+    </div>
+    <div class="card" style="border-left:4px solid #29B6F6">
+      <h3>🔵 Worked Example PF — Used Throughout This Guide</h3>
+      <p style="font-size:13px;color:#546E7A;margin-bottom:12px">Every section with an "Example" button uses this fictional PF to show the model applied end-to-end.</p>
+      <table class="hl-table">
+        <tr><td>PF Name</td><td>Enterprise SSO with Scoped JWT</td></tr>
+        <tr><td>PF-ID</td><td>PF-042</td></tr>
+        <tr><td>Problem</td><td>Dev teams cannot authenticate to internal APIs using corporate SSO. Each service maintains its own credential store — security risk + user friction.</td></tr>
+        <tr><td>Outcome</td><td>One SSO login grants a scoped JWT, accepted by all internal APIs without per-service credentials</td></tr>
+        <tr><td>Data class</td><td>Auth tokens (Confidential) · User identity (PII)</td></tr>
+        <tr><td>Services touched</td><td>auth-service (new) · api-gateway (updated) · user-service (read-only)</td></tr>
+      </table>
+    </div>
+    <div class="alert al-warn">⚠️ <div><strong>PF too large?</strong> A PF spanning multiple services, multiple data domains, and multiple teams is a programme, not a Product Function. Decompose before context assembly begins. See <strong>AP-M-005</strong> in Anti-Patterns.</div></div>
+  </div>
+</div>
+
+<!-- ===== CONTEXT STACK ===== -->
+<div id="sec-context" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Phase 0 · Pre-condition</div>
+    <h2>Context Stack &amp; FCD Assembly</h2>
+    <p>Context is not a prompt — it is a structured, versioned package assembled before any AI generation begins. All three layers must be present before Phase 1 starts. Missing any layer is a gate failure.</p>
+  </div>
+  <div class="sec-body">
+    <div class="stack-layer sl-req">
+      <div style="font-size:24px">📋</div>
+      <div>
+        <h4>Layer 1 — Requirement Context</h4>
+        <p><strong>Sources:</strong> Jira epic/story, Confluence specs, product research, design artefacts, stakeholder decisions</p>
+        <ul><li>Problem statement (user-centred, one paragraph)</li><li>Acceptance criteria — numbered, independently verifiable</li><li>Explicit non-goals</li><li>Edge cases and failure scenarios known at requirements stage</li><li>Jira/Confluence links for traceability</li><li>Data sensitivity classification (PII / Financial / Internal / Public)</li></ul>
+      </div>
+    </div>
+    <div class="stack-layer sl-tech">
+      <div style="font-size:24px">⚙️</div>
+      <div>
+        <h4>Layer 2 — Technical Context</h4>
+        <p><strong>Sources:</strong> ADRs, NFR catalogue, team learning docs, security guidelines, anti-pattern register</p>
+        <ul><li>Applicable architecture patterns (event-driven, CQRS, REST-first…)</li><li>NFR targets: latency p95/p99, throughput, availability SLA</li><li>Security: auth model, encryption at rest/transit, secrets handling</li><li>Anti-pattern register entries relevant to this PF (injected into every prompt)</li><li>Team conventions: naming, folder structure, error handling, dependency rules</li></ul>
+      </div>
+    </div>
+    <div class="stack-layer sl-code">
+      <div style="font-size:24px">💻</div>
+      <div>
+        <h4>Layer 3 — Code Context</h4>
+        <p><strong>Sources:</strong> Existing service interfaces, shared libraries, DB schema, test examples, pipeline templates</p>
+        <ul><li>Interface contracts (API signatures, message schemas)</li><li>Database entity models for affected domains</li><li>Shared utility patterns in use (error wrapper, logging initialiser…)</li><li>1–2 representative unit test files showing team test style</li><li>CI/CD pipeline template reference</li></ul>
+        <div class="alert al-info" style="margin-top:8px">📌 <div>Always inject: <em>"All generated code must follow these patterns exactly for naming, error handling, logging, and structure. Do not introduce new patterns not present in the examples."</em></div></div>
+      </div>
+    </div>
+
+    <button class="ex-btn" onclick="toggleEx('ex-fcd')">📄 See example: Filled FCD for PF-042 (SSO with Scoped JWT)</button>
+    <div id="ex-fcd" class="ex-block">
+      <div class="ex-label">Example FCD — PF-042 Enterprise SSO with Scoped JWT</div>
+      <code>
+# FCD: Enterprise SSO with Scoped JWT
+PF-ID: PF-042 | Version: 1.0 | Owner: Priya S. (Tech Lead)
+Status: Approved
+
+## REQUIREMENT CONTEXT
+Problem: Dev teams authenticate to internal APIs using per-service credentials
+stored in .env files. This creates N credential rotation cycles, onboarding
+friction, and audit gaps. Goal: single SSO login → scoped JWT → all APIs accept.
+
+Acceptance Criteria:
+[AC-01] User authenticates via Okta OIDC and receives a JWT (RS256) valid 15 min
+[AC-02] JWT contains scoped claims mapped from AD group memberships
+[AC-03] Protected endpoints reject expired JWTs with 401 + WWW-Authenticate
+[AC-04] Invalid Okta token returns 401 within 200ms (no upstream call)
+[AC-05] Okta timeout (>3s) returns 503 with Retry-After: 30 header
+
+Non-goals: Social login (Google/GitHub), mobile app SSO, MFA changes
+Data classification: Auth tokens = Confidential; user.email = PII
+
+## TECHNICAL CONTEXT
+Architecture pattern: REST API + async audit event on auth success
+NFR: p95 < 150ms (token validation path), p99 < 400ms, availability 99.9%
+Security: RS256 signing only (no HS256); public key rotated every 30 days
+Anti-patterns in scope:
+  [AP-007] No secrets in env vars — use AWS Secrets Manager
+  [AP-001] No sync HTTP between internal services for auth validation
+
+## CODE CONTEXT
+Interface: JwtService.createToken(claims: ClaimSet, expirySeconds: int): Token
+DB schema: users(id, okta_sub, email, ad_groups[], last_login)
+Test style: [see auth-service/src/test/AuthControllerTest.java for pattern]
+Config schema: auth.jwt.signing-key-arn, auth.jwt.expiry-seconds, auth.okta.domain
+      </code>
+    </div>
+
+    <div class="divider"></div>
+    <div class="card" style="border-left:4px solid #C62828">
+      <h3>🔐 Data &amp; IP Governance — Non-Negotiable</h3>
+      <p style="font-size:13px;color:#546E7A;margin-bottom:12px">Code context sent to external AI APIs must be sanitised. This is a data exposure risk, not a process preference.</p>
+      <table>
+        <tr><th>Never send to external AI APIs</th><th>Sanitisation action</th></tr>
+        <tr><td>Real credentials, API keys, tokens</td><td>Replace with <code>&lt;REDACTED&gt;</code> placeholder</td></tr>
+        <tr><td>PII (names, emails, user IDs, financial data)</td><td>Replace with synthetic data (e.g. user@example.com)</td></tr>
+        <tr><td>Client-confidential code under NDA</td><td>Confirm AI provider data handling policy first</td></tr>
+        <tr><td>Internal hostnames, IPs, VPN configs</td><td>Mask or remove before context assembly</td></tr>
+      </table>
+      <div class="alert al-danger" style="margin-top:10px">🏦 <div><strong>Regulated industries (banking, healthcare, defence):</strong> Use a private or on-prem model deployment. Public API usage requires explicit contractual clearance. The tech lead confirms this before Phase 0 sign-off.</div></div>
+    </div>
+    <div class="card" style="border-left:4px solid #2E7D32">
+      <h3>♻️ Context Reuse — Shared Baseline</h3>
+      <p style="font-size:13px;color:#546E7A;margin-bottom:10px">Maintain a team-level <code>team-context-baseline.md</code>. Every new FCD inherits from it — engineers extend, not rebuild.</p>
+      <table>
+        <tr><th>Baseline contains</th><th>Update trigger</th></tr>
+        <tr><td>Stable architecture patterns</td><td>After every new ADR</td></tr>
+        <tr><td>Active anti-pattern register (master)</td><td>After every incident retrospective</td></tr>
+        <tr><td>Canonical code examples (top 5 patterns)</td><td>Quarterly review</td></tr>
+        <tr><td>Global NFR targets (overridden per-PF with justification)</td><td>When SLA targets change</td></tr>
+      </table>
+      <div class="alert al-warn" style="margin-top:10px">⚠️ <div><strong>AP-M-011:</strong> If your team builds every FCD from scratch with no shared baseline, you are re-discovering the same anti-patterns on every PF. Context reuse rate target: &gt;60%.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODEL SELECTION ===== -->
+<div id="sec-model" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Core Principle</div>
+    <h2>Model Selection</h2>
+    <p>Not all AI tasks have the same cognitive demand. Routing each task to the right model is a quality decision, not a cost optimisation. Opus reasons; Sonnet generates.</p>
+  </div>
+  <div class="sec-body">
+    <div class="row2">
+      <div class="model-card m-opus">
+        <div class="m-hdr"><div class="m-icon">🧠</div><div><h3>Claude Opus</h3><p>Reasoning-heavy tasks — architecture, risk, security, constraint satisfaction</p></div></div>
+        <div class="m-body">
+          <table>
+            <tr><th>Task</th><th>Why Opus</th></tr>
+            <tr><td>FCD gap analysis</td><td>Must identify what is <em>absent</em>, not just present</td></tr>
+            <tr><td>Planning generation</td><td>Dependency sequencing, risk anticipation</td></tr>
+            <tr><td>High-Level Design</td><td>Architectural trade-offs, failure mode identification</td></tr>
+            <tr><td>Low-Level Design</td><td>Constraint satisfaction across NFR, security, data, interfaces</td></tr>
+            <tr><td>Security review</td><td>Implicit vulnerability reasoning, not pattern matching</td></tr>
+            <tr><td>Anti-pattern disposition</td><td>Judgement on risk vs. acceptable trade-off</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="model-card m-sonnet">
+        <div class="m-hdr"><div class="m-icon">⚡</div><div><h3>Claude Sonnet</h3><p>Generation-heavy tasks — scoped, deterministic output against an approved spec</p></div></div>
+        <div class="m-body">
+          <table>
+            <tr><th>Task</th><th>Why Sonnet</th></tr>
+            <tr><td>Code generation</td><td>Scoped, deterministic against approved LLD</td></tr>
+            <tr><td>Unit test generation</td><td>Pattern-based; follows code context examples</td></tr>
+            <tr><td>Test scenario matrix</td><td>Systematic enumeration from acceptance criteria</td></tr>
+            <tr><td>Boilerplate &amp; migration scripts</td><td>High-volume, low-ambiguity output</td></tr>
+            <tr><td>PR diff summary</td><td>Summarisation, not reasoning</td></tr>
+            <tr><td>CodeRabbit-style review</td><td>Pattern detection over structured input</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🎯 Quick Decision Helper — What Am I About To Do?</h3>
+      <p style="font-size:12px;color:#546E7A;margin-bottom:12px">Click your task to see the recommended model and the reason.</p>
+      <div class="decision-grid">
+        <div class="d-card" onclick="showModel('Review the FCD for gaps and missing context','Opus','Gap analysis requires reasoning over what is ABSENT, not just present. Opus will identify unstated assumptions, ambiguous acceptance criteria, and missing NFR targets that Sonnet would silently ignore.')">
+          <h4>Review the FCD for gaps</h4><p>Check what's missing before Phase 1</p>
+          <div class="d-model"><span class="badge b-opus">→ OPUS</span></div>
+        </div>
+        <div class="d-card" onclick="showModel('Generate the delivery plan for this PF','Opus','Planning requires dependency sequencing, effort reasoning, and risk anticipation — multi-step judgement that benefits from Opus depth.')">
+          <h4>Generate delivery plan</h4><p>Phase sequence, estimates, risks</p>
+          <div class="d-model"><span class="badge b-opus">→ OPUS</span></div>
+        </div>
+        <div class="d-card" onclick="showModel('Generate the High-Level Design','Opus','HLD involves architectural trade-off reasoning, failure mode identification, and NFR compliance analysis — deep multi-step reasoning where errors cascade downstream.')">
+          <h4>Generate HLD</h4><p>Component design, failure flows</p>
+          <div class="d-model"><span class="badge b-opus">→ OPUS</span></div>
+        </div>
+        <div class="d-card" onclick="showModel('Generate the Low-Level Design','Opus','LLD must satisfy constraints across NFR, security, data model, and interface requirements simultaneously. Errors here propagate directly into generated code.')">
+          <h4>Generate LLD</h4><p>Method signatures, error taxonomy</p>
+          <div class="d-model"><span class="badge b-opus">→ OPUS</span></div>
+        </div>
+        <div class="d-card" onclick="showModel('Generate implementation code','Sonnet','The LLD is approved — the thinking is done. Sonnet generates high-quality, well-scoped code against the spec faster and at lower cost.')">
+          <h4>Generate implementation code</h4><p>Against approved LLD</p>
+          <div class="d-model"><span class="badge b-sonnet">→ SONNET</span></div>
+        </div>
+        <div class="d-card" onclick="showModel('Generate unit tests','Sonnet','Unit test generation is pattern-based — style follows the code context examples. This is high-volume, well-scoped output perfect for Sonnet.')">
+          <h4>Generate unit tests</h4><p>Happy path + error paths + boundaries</p>
+          <div class="d-model"><span class="badge b-sonnet">→ SONNET</span></div>
+        </div>
+        <div class="d-card" onclick="showModel('Generate test scenario matrix','Sonnet','Systematic enumeration from well-defined acceptance criteria. The FCD provides complete input — no open-ended reasoning required.')">
+          <h4>Generate test scenarios</h4><p>From acceptance criteria</p>
+          <div class="d-model"><span class="badge b-sonnet">→ SONNET</span></div>
+        </div>
+        <div class="d-card" onclick="showModel('Run Claude Security Review on the diff','Opus','Security analysis requires reasoning over implicit vulnerability paths — broken auth patterns, IDOR risks, injection vectors with partial mitigations. Pattern matching misses these.')">
+          <h4>Security review</h4><p>Analyse code diff for vulnerabilities</p>
+          <div class="d-model"><span class="badge b-opus">→ OPUS</span></div>
+        </div>
+      </div>
+      <div id="model-result" style="display:none;background:#f8f9ff;border-radius:8px;padding:14px;margin-top:12px;border-left:4px solid #1565C0">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#1565C0;margin-bottom:5px" id="mr-task"></div>
+        <div style="font-size:15px;font-weight:800;color:#0F3460;margin-bottom:6px" id="mr-model"></div>
+        <div style="font-size:13px;color:#546E7A;line-height:1.5" id="mr-reason"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>💡 The Handoff Rule</h3>
+      <p style="font-size:13px;color:#546E7A;line-height:1.6;margin-bottom:10px"><strong>Opus drives every phase that produces a gate artefact</strong> (plan, HLD, LLD, security report). <strong>Sonnet executes every phase that consumes an approved gate artefact</strong> (code, tests, scenarios). The model boundary follows the gate boundary.</p>
+      <table>
+        <tr><th>Phase</th><th>Model</th><th>Reason</th></tr>
+        <tr><td>Phase 0 — Context Assembly (gap-flag)</td><td><span class="badge b-opus">OPUS</span></td><td>Identify what's missing — requires absence reasoning</td></tr>
+        <tr><td>Phase 1 — Planning</td><td><span class="badge b-opus">OPUS</span></td><td>Dependency + risk reasoning</td></tr>
+        <tr><td>Phase 2 — HLD</td><td><span class="badge b-opus">OPUS</span></td><td>Architectural trade-offs, failure modes</td></tr>
+        <tr><td>Phase 3 — LLD</td><td><span class="badge b-opus">OPUS</span></td><td>Multi-constraint satisfaction</td></tr>
+        <tr><td>Phase 4 — Code + Tests</td><td><span class="badge b-sonnet">SONNET</span></td><td>Deterministic generation against approved LLD</td></tr>
+        <tr><td>Phase 5 — Test Scenarios</td><td><span class="badge b-sonnet">SONNET</span></td><td>Systematic enumeration from AC</td></tr>
+        <tr><td>Phase 5 — Security Review</td><td><span class="badge b-opus">OPUS</span></td><td>Implicit vulnerability reasoning</td></tr>
+        <tr><td>Phase 6 — PR Summary</td><td><span class="badge b-sonnet">SONNET</span></td><td>Summarisation against known diff</td></tr>
+      </table>
+      <div class="alert al-info" style="margin-top:10px">📊 <div><strong>Cost ratio:</strong> ~20% Opus (reasoning phases) · ~80% Sonnet (generation phases). Most tokens should be cheap because expensive thinking happened once in a structured, reusable context document.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TECH SPEC ===== -->
+<div id="sec-spec" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Gate Artefact</div>
+    <h2>Tech Spec Standard</h2>
+    <p>The bridge between requirements and implementation. AI-assisted but human-approved before any code generation begins. A missing or ambiguous section is a gate failure.</p>
+  </div>
+  <div class="sec-body">
+    <div class="card">
+      <h3>Required Sections</h3>
+      <table>
+        <tr><th>#</th><th>Section</th><th>What it must contain</th><th>Why it matters</th></tr>
+        <tr><td><strong>4.1</strong></td><td>Functional Scope</td><td>Component boundary map; data flow diagram</td><td>Defines blast radius — what can and cannot change</td></tr>
+        <tr><td><strong>4.2</strong></td><td>Architecture Decision</td><td>Selected pattern + rationale; rejected alternatives (1 sentence each); ADR ref</td><td>Prevents AI from silently choosing a different pattern</td></tr>
+        <tr><td><strong>4.3</strong></td><td>NFR Targets <span class="badge b-gate">BINDING</span></td><td>Latency p95/p99, availability, error rate, throughput — with measurement method</td><td>NFR violations are spec-level failures, not code review comments</td></tr>
+        <tr><td><strong>4.4</strong></td><td>Interface Contract</td><td>OpenAPI fragment or message schema; input validation; error responses; idempotency</td><td>AI generates to this contract — ambiguity = wrong API</td></tr>
+        <tr><td><strong>4.5</strong></td><td>Data Design</td><td>Schema changes; migration strategy; retention rules</td><td>Migrations on live systems fail silently if not specified</td></tr>
+        <tr><td><strong>4.6</strong></td><td>Security &amp; Compliance</td><td>Auth scope; data classification; encryption; audit logging</td><td>Security omitted at spec level is security omitted in code</td></tr>
+        <tr><td><strong>4.7</strong></td><td>Observability Design</td><td>Named metrics (counter/gauge/histogram); log events with fields; trace spans; alert thresholds</td><td>Features without observability cannot be operated in production</td></tr>
+        <tr><td><strong>4.8</strong></td><td>What Not To Do</td><td>Anti-pattern register entries for this PF — injected verbatim into every AI prompt</td><td>Guardrails AI cannot infer without explicit instruction</td></tr>
+      </table>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <h3>NFR Targets — Example</h3>
+        <table>
+          <tr><th>NFR</th><th>Target</th><th>Measured by</th></tr>
+          <tr><td>Latency p95</td><td>&lt;150ms</td><td>APM trace + load test</td></tr>
+          <tr><td>Latency p99</td><td>&lt;400ms</td><td>APM trace</td></tr>
+          <tr><td>Availability</td><td>99.9%</td><td>SLA dashboard</td></tr>
+          <tr><td>Error rate</td><td>&lt;0.1%</td><td>Error rate alert</td></tr>
+          <tr><td>Throughput</td><td>500 rps peak</td><td>k6 load test</td></tr>
+        </table>
+        <div class="alert al-warn" style="margin-top:8px">⚠️ <div>An O(n²) DB query against an unbounded table is a <strong>spec-level failure</strong> — reject at HLD, not in code review.</div></div>
+      </div>
+      <div class="card">
+        <h3>Approval Gate Checklist</h3>
+        <ul class="checklist" id="spec-cl">
+          <li><input type="checkbox" id="sp1" onchange="updateProg('spec-cl','sp-prog')"><label for="sp1">NFRs are quantified and have named measurement methods</label></li>
+          <li><input type="checkbox" id="sp2" onchange="updateProg('spec-cl','sp-prog')"><label for="sp2">Interface contract covers all error cases and HTTP codes</label></li>
+          <li><input type="checkbox" id="sp3" onchange="updateProg('spec-cl','sp-prog')"><label for="sp3">Data design handles migration safely (rollback script verified)</label></li>
+          <li><input type="checkbox" id="sp4" onchange="updateProg('spec-cl','sp-prog')"><label for="sp4">Security section reviewed by security-aware engineer</label></li>
+          <li><input type="checkbox" id="sp5" onchange="updateProg('spec-cl','sp-prog')"><label for="sp5">Anti-patterns section is specific to this PF, not generic</label></li>
+          <li><input type="checkbox" id="sp6" onchange="updateProg('spec-cl','sp-prog')"><label for="sp6">No ambiguity in acceptance criteria (no "should", "may")</label></li>
+        </ul>
+        <div class="prog-wrap"><div class="prog-bar" id="sp-prog" style="width:0%"></div></div>
+        <div id="sp-prog-lbl" class="cl-prog">0 / 6 complete</div>
+      </div>
+    </div>
+    <button class="ex-btn" onclick="toggleEx('ex-spec')">📐 See example: Tech Spec NFR + Interface Contract for PF-042</button>
+    <div id="ex-spec" class="ex-block">
+      <div class="ex-label">Tech Spec excerpt — PF-042</div>
+      <code>
+## 4.3 NFR Targets (Binding)
+| NFR           | Target   | Measurement           |
+|---------------|----------|-----------------------|
+| Latency p95   | < 150ms  | APM trace (token path)|
+| Latency p99   | < 400ms  | APM trace             |
+| Availability  | 99.9%    | SLA dashboard         |
+| Error rate    | < 0.1%   | Alerting rule         |
+
+## 4.4 Interface Contract
+POST /auth/token
+  Request: { okta_id_token: string }
+  Response 200: { access_token: string, expires_in: 900, token_type: "Bearer" }
+  Response 401: { error: "invalid_token", error_description: string }
+  Response 503: { error: "upstream_unavailable" } + Retry-After: 30
+
+Idempotency: POST is NOT idempotent — each call mints a new token.
+Validation: okta_id_token must be a non-empty string, max 4096 chars.
+
+## 4.8 What Not To Do (PF-042 specific)
+[AP-007] Do not store the signing key in env vars — use AWS Secrets Manager ARN.
+[AP-001] Do not call user-service synchronously during token validation — cache groups.
+[TEAM-03] Do not use HS256 — RS256 only. Reject any library defaulting to HS256.
+      </code>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DOD ===== -->
+<div id="sec-dod" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Quality Gate</div>
+    <h2>Definition of Done</h2>
+    <p>DoD is derived from requirement acceptance criteria + tech spec targets. Not a checklist appended after build — the pre-agreed contract that shapes all generation. Any unchecked item blocks PR merge.</p>
+  </div>
+  <div class="sec-body">
+    <div class="alert al-ok">✅ <div><strong>How to use this:</strong> Open this checklist during Phase 4 (code generation), not before PR. As you write and review code, tick items. The PR must include a copy of this checklist with all items checked or dispositioned.</div></div>
+    <div class="cl-group"><div class="cl-hdr"><h4>Functional Completeness</h4><span class="cl-prog" id="fc-prog-lbl">0/3</span></div>
+      <div class="prog-wrap"><div class="prog-bar" id="fc-prog" style="width:0%"></div></div>
+      <ul class="checklist">
+        <li><input type="checkbox" id="fc1" onchange="updateProg2('fc',3)"><label for="fc1">All acceptance criteria from Requirement Context pass in integration test</label></li>
+        <li><input type="checkbox" id="fc2" onchange="updateProg2('fc',3)"><label for="fc2">All edge cases and failure scenarios have explicit test coverage</label></li>
+        <li><input type="checkbox" id="fc3" onchange="updateProg2('fc',3)"><label for="fc3">No acceptance criterion is met by test workaround (mocked dep hiding real failure)</label></li>
+      </ul>
+    </div>
+    <div class="cl-group tech-g"><div class="cl-hdr"><h4>Technical Correctness</h4><span class="cl-prog" id="tc-prog-lbl">0/4</span></div>
+      <div class="prog-wrap"><div class="prog-bar" id="tc-prog" style="width:0%"></div></div>
+      <ul class="checklist">
+        <li><input type="checkbox" id="tc1" onchange="updateProg2('tc',4)"><label for="tc1">NFR targets met under representative load (evidence: test report or APM screenshot)</label></li>
+        <li><input type="checkbox" id="tc2" onchange="updateProg2('tc',4)"><label for="tc2">Interface contract matches spec exactly — no undocumented deviations</label></li>
+        <li><input type="checkbox" id="tc3" onchange="updateProg2('tc',4)"><label for="tc3">Data migration tested on production-representative dataset</label></li>
+        <li><input type="checkbox" id="tc4" onchange="updateProg2('tc',4)"><label for="tc4">No anti-pattern register violations (CodeRabbit + manual confirmation)</label></li>
+      </ul>
+    </div>
+    <div class="cl-group sec-g"><div class="cl-hdr"><h4>Security</h4><span class="cl-prog" id="sc-prog-lbl">0/4</span></div>
+      <div class="prog-wrap"><div class="prog-bar" id="sc-prog" style="width:0%"></div></div>
+      <ul class="checklist">
+        <li><input type="checkbox" id="sc1" onchange="updateProg2('sc',4)"><label for="sc1">Claude Security Review (Opus): zero high or critical findings</label></li>
+        <li><input type="checkbox" id="sc2" onchange="updateProg2('sc',4)"><label for="sc2">All secrets accessed via secrets manager — no env var secrets</label></li>
+        <li><input type="checkbox" id="sc3" onchange="updateProg2('sc',4)"><label for="sc3">Auth enforced at correct layer (not in business logic)</label></li>
+        <li><input type="checkbox" id="sc4" onchange="updateProg2('sc',4)"><label for="sc4">Input validation covers all external inputs</label></li>
+      </ul>
+    </div>
+    <div class="cl-group obs-g"><div class="cl-hdr"><h4>Observability</h4><span class="cl-prog" id="ob-prog-lbl">0/3</span></div>
+      <div class="prog-wrap"><div class="prog-bar" id="ob-prog" style="width:0%"></div></div>
+      <ul class="checklist">
+        <li><input type="checkbox" id="ob1" onchange="updateProg2('ob',3)"><label for="ob1">All required metrics emitted and visible in dashboard</label></li>
+        <li><input type="checkbox" id="ob2" onchange="updateProg2('ob',3)"><label for="ob2">Log events present with correct structured fields</label></li>
+        <li><input type="checkbox" id="ob3" onchange="updateProg2('ob',3)"><label for="ob3">Distributed trace spans created as specified in Tech Spec 4.7</label></li>
+      </ul>
+    </div>
+    <div class="cl-group qual-g"><div class="cl-hdr"><h4>Quality Gates Passed</h4><span class="cl-prog" id="qg-prog-lbl">0/5</span></div>
+      <div class="prog-wrap"><div class="prog-bar" id="qg-prog" style="width:0%"></div></div>
+      <ul class="checklist">
+        <li><input type="checkbox" id="qg1" onchange="updateProg2('qg',5)"><label for="qg1">Linting: zero violations (hard block in CI)</label></li>
+        <li><input type="checkbox" id="qg2" onchange="updateProg2('qg',5)"><label for="qg2">Unit test coverage: ≥80% line coverage on new code</label></li>
+        <li><input type="checkbox" id="qg3" onchange="updateProg2('qg',5)"><label for="qg3">Integration tests: all scenarios pass</label></li>
+        <li><input type="checkbox" id="qg4" onchange="updateProg2('qg',5)"><label for="qg4">CodeRabbit review: no unresolved medium+ comments</label></li>
+        <li><input type="checkbox" id="qg5" onchange="updateProg2('qg',5)"><label for="qg5">Dependency scan: zero critical CVEs in new/updated dependencies</label></li>
+      </ul>
+    </div>
+    <div class="cl-group doc-g"><div class="cl-hdr"><h4>Documentation</h4><span class="cl-prog" id="dc-prog-lbl">0/3</span></div>
+      <div class="prog-wrap"><div class="prog-bar" id="dc-prog" style="width:0%"></div></div>
+      <ul class="checklist">
+        <li><input type="checkbox" id="dc1" onchange="updateProg2('dc',3)"><label for="dc1">API contract updated in shared spec repository</label></li>
+        <li><input type="checkbox" id="dc2" onchange="updateProg2('dc',3)"><label for="dc2">ADR created or referenced for any new architecture decision</label></li>
+        <li><input type="checkbox" id="dc3" onchange="updateProg2('dc',3)"><label for="dc3">Confluence updated if functional behaviour changed</label></li>
+      </ul>
+    </div>
+    <div style="background:#0F3460;color:#fff;border-radius:10px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:12px;opacity:.7;margin-bottom:2px">Overall DoD completion</div><div style="font-size:22px;font-weight:900" id="dod-total">0 / 22 items</div></div>
+      <button onclick="resetDod()" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer">Reset checklist</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LIFECYCLE ===== -->
+<div id="sec-lifecycle" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">7 Phases</div>
+    <h2>Delivery Lifecycle</h2>
+    <p>Each phase has an owner, a model, a prompt pattern, and a gate. Click any phase to expand it. Complete phases in sequence — no skipping.</p>
+  </div>
+  <div class="sec-body">
+    <div class="alert al-info">📌 <div>Worked examples for PF-042 (Enterprise SSO with Scoped JWT) are embedded in each phase. Toggle "See Example" to view.</div></div>
+
+    <!-- Phase 0 -->
+    <div class="phase-card ph0" id="ph-0">
+      <div class="ph-hdr" onclick="togglePhase('ph-0')">
+        <div class="ph-num">0</div>
+        <div class="ph-info"><div class="ph-title">Context Assembly</div><div class="ph-sub">Owner: Tech Lead + Engineer · Model: <span style="font-weight:800">OPUS</span> · Gate: FCD sign-off</div></div>
+        <div class="ph-chev">▾</div>
+      </div>
+      <div class="ph-body">
+        <p style="font-size:13px;color:#546E7A;margin-bottom:12px">No generation phase begins without a complete FCD. Gap identification requires reasoning over what is <em>absent</em>, not just present — use Opus.</p>
+        <ol class="steps">
+          <li>Pull Jira epic and linked stories into FCD Requirement section</li>
+          <li>Pull applicable Confluence specs and research into FCD</li>
+          <li>Extract relevant ADRs, NFR catalogue entries, and anti-patterns into Technical section</li>
+          <li>Pull code context: interface files, schema, test examples into Code section</li>
+          <li>Sanitise all context of credentials, PII, and client-confidential data</li>
+          <li>Use Opus to gap-flag the FCD — prompt: <em>"What is missing from this FCD that would block correct generation?"</em></li>
+          <li>Tech lead signs off FCD before proceeding to Phase 1</li>
+        </ol>
+        <div class="alert al-danger" style="margin-top:10px">🚫 <div><strong>AP-M-001:</strong> Skipping FCD assembly to start coding faster produces technically complete but functionally wrong code. The rework cost exceeds the time saved.</div></div>
+        <button class="ex-btn" onclick="toggleEx('ex-ph0')">📄 See example: FCD gap-flag output for PF-042</button>
+        <div id="ex-ph0" class="ex-block">
+          <div class="ex-label">Opus FCD gap-flag output — PF-042</div>
+          <code>
+Reviewing the FCD for PF-042 (Enterprise SSO with Scoped JWT):
+
+MISSING — Technical Context:
+  • No specification for public key rotation mechanism. AC-01 mentions RS256
+    but there is no process defined for key rotation (30-day interval stated
+    in security requirements but not reflected in FCD).
+  • Group-to-scope mapping rules not documented. AC-02 states JWT will contain
+    "scoped claims mapped from AD groups" but the mapping table is absent.
+    AI cannot generate correct mapping logic without this.
+
+AMBIGUOUS — Acceptance Criteria:
+  • AC-04 says "within 200ms" but no measurement baseline is defined. Is this
+    p95 or p99? Under what load?
+
+MISSING — Code Context:
+  • No example of how existing services call JwtService.createToken(). Without
+    a caller example, generated client code may use incorrect error handling.
+
+ACTION REQUIRED before Phase 1:
+  1. Add AD-group-to-scope mapping table to Requirement Context
+  2. Add key rotation runbook reference to Technical Context
+  3. Add a JwtService caller example to Code Context
+  4. Clarify AC-04 measurement condition
+          </code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 1 -->
+    <div class="phase-card ph1" id="ph-1">
+      <div class="ph-hdr" onclick="togglePhase('ph-1')">
+        <div class="ph-num">1</div>
+        <div class="ph-info"><div class="ph-title">Planning Generation</div><div class="ph-sub">Owner: Tech Lead · Model: <span style="font-weight:800">OPUS</span> · Gate: Approved delivery plan</div></div>
+        <div class="ph-chev">▾</div>
+      </div>
+      <div class="ph-body">
+        <p style="font-size:13px;color:#546E7A;margin-bottom:10px">Generate a phased delivery plan from the approved FCD. Tech lead reviews for completeness, risks, and realistic estimates. Plan is logged in Jira as the implementation epic breakdown.</p>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge b-opus">OPUS</span><span style="font-size:12px;color:#546E7A">Dependency sequencing, risk anticipation, and effort reasoning require multi-step judgement.</span></div>
+        <div class="prompt-wrap">
+          <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+          <pre>Given the Feature Context Document below, generate a delivery plan for this Product Function.
+
+The plan MUST include:
+- Ordered implementation phases with clear dependencies
+- Effort estimates per phase (in hours, not story points)
+- Risks and assumptions for each phase
+- Identification of the highest-risk phase and why
+
+Constraints:
+- Use only the architecture patterns and constraints in Technical Context
+- Do not suggest tools or patterns not present in the FCD
+- Flag any acceptance criterion that has no clear implementation path
+
+[PASTE APPROVED FCD HERE]</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="phase-card ph2" id="ph-2">
+      <div class="ph-hdr" onclick="togglePhase('ph-2')">
+        <div class="ph-num">2</div>
+        <div class="ph-info"><div class="ph-title">High-Level Design (HLD)</div><div class="ph-sub">Owner: Tech Lead · Model: <span style="font-weight:800">OPUS</span> · Gate: Tech Lead + peer review</div></div>
+        <div class="ph-chev">▾</div>
+      </div>
+      <div class="ph-body">
+        <p style="font-size:13px;color:#546E7A;margin-bottom:10px">Architectural trade-off reasoning, failure mode identification, and NFR compliance analysis. Any unresolved risk blocks progression to LLD.</p>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge b-opus">OPUS</span><span style="font-size:12px;color:#546E7A">Errors at HLD cascade into LLD, code, and tests — most expensive place to be wrong.</span></div>
+        <p style="font-size:12px;font-weight:700;color:#0F3460;margin:8px 0 4px">HLD must produce:</p>
+        <ul class="plain"><li>Component diagram (text-representable)</li><li>Primary flow sequence</li><li>Minimum 2 failure flow sequences</li><li>NFR compliance rationale</li><li>Top 3 risks with mitigations</li></ul>
+        <div class="prompt-wrap" style="margin-top:10px">
+          <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+          <pre>You are a senior software architect. Generate a High-Level Design for the Product Function in the Feature Context Document below.
+
+Requirements:
+- Follow ONLY the architecture patterns listed in Technical Context
+- NFR targets are BINDING — design must explicitly state how each target is met
+- Identify failure modes for the primary flow AND at least two secondary flows
+- Explicitly state how each anti-pattern in the FCD is avoided in this design
+
+Output format (required):
+1. Component interaction description
+2. Primary flow sequence (numbered steps)
+3. Failure flow sequences (minimum 2, numbered steps each)
+4. NFR compliance rationale (per NFR target)
+5. Top 3 risks with specific mitigations
+
+[PASTE APPROVED FCD HERE]</pre>
+        </div>
+        <button class="ex-btn" onclick="toggleEx('ex-ph2')">🏗 See example: HLD failure flows for PF-042</button>
+        <div id="ex-ph2" class="ex-block">
+          <div class="ex-label">HLD excerpt — PF-042 failure flows</div>
+          <code>
+Primary Flow:
+1. Client POSTs okta_id_token to POST /auth/token
+2. auth-service validates token format (local, < 1ms)
+3. auth-service calls Okta JWKS endpoint to verify signature
+4. auth-service looks up user in users table by okta_sub
+5. auth-service maps user.ad_groups[] to internal scopes via mapping table
+6. auth-service calls JwtService.createToken(claims, 900)
+7. Returns { access_token, expires_in: 900, token_type: "Bearer" }
+
+Failure Flow A — Invalid Okta Token (AC-04):
+1. Client POSTs malformed/expired okta_id_token
+2. auth-service validates format → detects invalid structure
+3. Returns 401 { error: "invalid_token" } WITHOUT calling Okta
+   → meets AC-04 "within 200ms, no upstream call"
+
+Failure Flow B — Okta JWKS Timeout (AC-05):
+1. Client POSTs valid-format token
+2. auth-service calls Okta JWKS endpoint
+3. Okta does not respond within 3000ms
+4. Circuit breaker trips → returns 503 { error: "upstream_unavailable" }
+   + Retry-After: 30 header
+   → AP-001 compliance: failure is local, no cascade to user-service
+
+NFR Compliance:
+- p95 < 150ms: local validation + cached JWKS (refreshed every 5min)
+  Okta call only on cache miss — expected p95 hit rate > 95%
+- Availability 99.9%: circuit breaker prevents Okta outage from causing downtime
+          </code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div class="phase-card ph3" id="ph-3">
+      <div class="ph-hdr" onclick="togglePhase('ph-3')">
+        <div class="ph-num">3</div>
+        <div class="ph-info"><div class="ph-title">Low-Level Design (LLD)</div><div class="ph-sub">Owner: Engineer + Tech Lead · Model: <span style="font-weight:800">OPUS</span> · Gate: Tech Lead review</div></div>
+        <div class="ph-chev">▾</div>
+      </div>
+      <div class="ph-body">
+        <p style="font-size:13px;color:#546E7A;margin-bottom:10px">Constraint satisfaction across NFR, security, data model, and interface requirements simultaneously. Errors here propagate directly into generated code.</p>
+        <p style="font-size:12px;font-weight:700;color:#0F3460;margin:8px 0 4px">LLD must produce:</p>
+        <ul class="plain"><li>Function/method signatures with parameter types and return types</li><li>Database schema changes with migration scripts</li><li>Error taxonomy: named types, HTTP codes, log levels</li><li>Unit test strategy: unit vs integration boundary</li><li>Configuration schema for any new config</li></ul>
+        <div class="prompt-wrap" style="margin-top:10px">
+          <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+          <pre>You are a senior software architect. Generate a Low-Level Design for [COMPONENT NAME] based on the approved HLD and FCD below.
+
+Include:
+- Function/method signatures with full parameter types and return types
+- Database schema changes with migration SQL
+- Error taxonomy: error class name, HTTP status code, log level, log message template
+- Unit test strategy: list what is tested at unit level vs integration level
+- Configuration schema with key names, types, defaults, and validation rules
+
+Constraints:
+- All signatures MUST follow the patterns in Code Context exactly
+- All config keys MUST follow naming convention in Team Conventions
+- Apply ALL anti-patterns from FCD section 4.8 — state explicitly how each is avoided
+
+[PASTE APPROVED HLD + FCD]</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div class="phase-card ph4" id="ph-4">
+      <div class="ph-hdr" onclick="togglePhase('ph-4')">
+        <div class="ph-num">4</div>
+        <div class="ph-info"><div class="ph-title">Code + Unit Test Generation</div><div class="ph-sub">Owner: Engineer · Model: <span style="font-weight:800">SONNET</span> · Gate: Linting pass + unit tests pass</div></div>
+        <div class="ph-chev">▾</div>
+      </div>
+      <div class="ph-body">
+        <p style="font-size:13px;color:#546E7A;margin-bottom:10px">Generation is scoped and deterministic once the LLD is approved. Sonnet produces high-quality output faster at lower cost for well-specified tasks.</p>
+        <div class="prompt-wrap">
+          <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+          <pre>You are a senior software engineer. Generate production-quality implementation code for [MODULE NAME] based on the approved LLD below.
+
+Hard rules — NON-NEGOTIABLE:
+- Follow every pattern in Code Context EXACTLY (naming, error handling, logging, structure)
+- Apply every anti-pattern prohibition from FCD section 4.8
+- Do NOT introduce dependencies not in the existing dependency manifest
+- All configuration via config schema — zero hardcoded values
+- All external inputs validated before use
+- Emit structured log events at all points in the Observability Design
+
+Generate alongside the implementation:
+- Complete unit tests: happy path + ALL error paths + boundary conditions
+- Test style MUST match the test style example in Code Context
+
+[PASTE FCD Technical Context + Code Context + Approved LLD + Anti-patterns]</pre>
+        </div>
+        <div style="margin-top:14px">
+          <p style="font-size:13px;font-weight:700;color:#C62828;margin-bottom:8px">🔍 Hallucination Validation Protocol — Run Before Committing</p>
+          <table>
+            <tr><th>Signal</th><th>Check</th><th>Resolution</th></tr>
+            <tr><td>Import does not resolve</td><td>Run dependency resolve — zero unresolved imports</td><td>Remove import; find correct package or flag in Code Context</td></tr>
+            <tr><td>Method does not exist on library</td><td>Cross-reference against library's actual API</td><td>Replace with correct method; add correct example to Code Context</td></tr>
+            <tr><td>Class not in codebase</td><td>Search codebase for the referenced class name</td><td>Add actual class to Code Context, regenerate</td></tr>
+            <tr><td>DB column/table doesn't exist</td><td>Compare against schema in FCD Code Context</td><td>Add schema to FCD, regenerate data layer</td></tr>
+            <tr><td>Config key not in schema</td><td>Check against defined config schema</td><td>Add schema, regenerate config access code</td></tr>
+          </table>
+          <div class="alert al-danger" style="margin-top:8px">🔴 <div><strong>Regeneration trigger:</strong> If &gt;25% of generated code requires correction for hallucination, <em>do not patch line by line</em>. Identify the missing context, add it to FCD Code Context, and regenerate the module. Patching without improving context repeats the same failure next PF.</div></div>
+        </div>
+        <button class="ex-btn" onclick="toggleEx('ex-ph4')">💡 See example: Hallucination caught in PF-042</button>
+        <div id="ex-ph4" class="ex-block">
+          <div class="ex-label">Hallucination caught — PF-042 code generation</div>
+          <code>
+GENERATED CODE (Phase 4, Sonnet):
+  Token token = jwtService.mintWithExpiry(claims, Duration.ofMinutes(15));
+
+PROBLEM:
+  jwtService.mintWithExpiry() does NOT exist.
+  The actual interface (from Code Context) is:
+  Token createToken(ClaimSet claims, int expirySeconds)
+
+HALLUCINATION TYPE: Method does not exist on interface
+DETECTED BY: IDE red-squiggle + compile failure
+
+ROOT CAUSE: Code Context included the JwtService interface declaration
+but NOT a usage example showing createToken() being called.
+
+FIX:
+1. Added caller example to FCD Code Context:
+   Token t = jwtService.createToken(claims, config.getJwtExpirySeconds());
+
+2. Regenerated auth-service/src/main/TokenMinter.java with Sonnet
+
+RESULT: Correct output on second generation, zero hallucinations.
+          </code>
+        </div>
+        <div style="margin-top:12px">
+          <p style="font-size:12px;font-weight:700;color:#0F3460;margin-bottom:6px">Post-generation engineer checklist:</p>
+          <ul class="checklist" id="pg-cl">
+            <li><input type="checkbox" id="pg1" onchange="updateProg('pg-cl','pg-prog')"><label for="pg1">Generated code reads correctly — no hallucinated APIs or non-existent methods</label></li>
+            <li><input type="checkbox" id="pg2" onchange="updateProg('pg-cl','pg-prog')"><label for="pg2">All LLD signatures are implemented as specified</label></li>
+            <li><input type="checkbox" id="pg3" onchange="updateProg('pg-cl','pg-prog')"><label for="pg3">No hardcoded values (configs, secrets, URLs)</label></li>
+            <li><input type="checkbox" id="pg4" onchange="updateProg('pg-cl','pg-prog')"><label for="pg4">Unit tests cover all paths defined in LLD test strategy</label></li>
+            <li><input type="checkbox" id="pg5" onchange="updateProg('pg-cl','pg-prog')"><label for="pg5">Linting passes locally before committing</label></li>
+          </ul>
+          <div class="prog-wrap"><div class="prog-bar" id="pg-prog" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 5 -->
+    <div class="phase-card ph5" id="ph-5">
+      <div class="ph-hdr" onclick="togglePhase('ph-5')">
+        <div class="ph-num">5</div>
+        <div class="ph-info"><div class="ph-title">Testing Scenarios + Quality Gates</div><div class="ph-sub">Owner: Engineer + QA · Models: <span style="font-weight:800">SONNET</span> (scenarios) / <span style="font-weight:800">OPUS</span> (security)</div></div>
+        <div class="ph-chev">▾</div>
+      </div>
+      <div class="ph-body">
+        <div class="prompt-wrap">
+          <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+          <pre>You are a QA engineer. Generate a complete test scenario matrix from the Feature Context Document below.
+
+For each scenario provide:
+- Scenario ID (TSC-NNN)
+- Description
+- Input conditions (exact values where possible)
+- Expected outcome (status code + response body)
+- Test type: unit / integration / contract / load / e2e
+- DoD criterion it validates (AC-NN)
+
+IMPORTANT: Flag any acceptance criterion with NO corresponding scenario as a coverage gap.
+Aim for at least 2 scenarios per acceptance criterion (happy path + failure path).
+
+[PASTE FCD Requirement Context section only]</pre>
+        </div>
+        <button class="ex-btn" onclick="toggleEx('ex-ph5')">🧪 See example: Test scenario matrix for PF-042</button>
+        <div id="ex-ph5" class="ex-block">
+          <div class="ex-label">Test scenario matrix excerpt — PF-042</div>
+          <code>
+| ID      | Description                          | Input                    | Expected          | Type        | Validates |
+|---------|--------------------------------------|--------------------------|-------------------|-------------|-----------|
+| TSC-001 | Valid Okta token → JWT returned      | valid okta_id_token      | 200 + JWT         | Integration | AC-01     |
+| TSC-002 | JWT contains correct scope claims    | valid token, user in AD  | claims match map  | Integration | AC-02     |
+| TSC-003 | Expired JWT rejected by API gateway  | expired access_token     | 401 + WWW-Auth    | Integration | AC-03     |
+| TSC-004 | Invalid Okta token, no upstream call | malformed token          | 401 within 200ms  | Unit        | AC-04     |
+| TSC-005 | Okta timeout → 503 + Retry-After     | Okta mock timeout (3s)   | 503 Retry-After:30| Integration | AC-05     |
+| TSC-006 | JWT load: 500 rps for 60s            | 500 concurrent requests  | p95 < 150ms       | Load        | NFR       |
+| TSC-007 | Signing key not in Secrets Manager   | missing ARN              | startup fail + log| Unit        | AP-007    |
+
+COVERAGE GAP: None — all 5 ACs have ≥2 scenarios each.
+          </code>
+        </div>
+        <div style="margin-top:12px">
+          <p style="font-size:12px;font-weight:700;color:#0F3460;margin-bottom:6px">Required test types per PF:</p>
+          <table><tr><th>Type</th><th>Scope</th><th>Tool</th><th>Gate</th></tr>
+          <tr><td>Unit</td><td>Function/class</td><td>Jest / JUnit / pytest</td><td>All pass before PR</td></tr>
+          <tr><td>Integration</td><td>Service + dependency</td><td>Testcontainers / WireMock</td><td>All pass before PR</td></tr>
+          <tr><td>Contract</td><td>API interface</td><td>Pact / OpenAPI validator</td><td>All pass before PR</td></tr>
+          <tr><td>Security (SAST)</td><td>Code diff</td><td>Claude Opus + Snyk</td><td>Zero high/critical before PR</td></tr>
+          <tr><td>Load</td><td>NFR targets</td><td>k6 / Gatling</td><td>NFR targets met before PR</td></tr>
+          <tr><td>E2E smoke</td><td>User journey</td><td>Playwright / Cypress</td><td>Passes before deploy</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 6 -->
+    <div class="phase-card ph6" id="ph-6">
+      <div class="ph-hdr" onclick="togglePhase('ph-6')">
+        <div class="ph-num">6</div>
+        <div class="ph-info"><div class="ph-title">Pull Request + Approval</div><div class="ph-sub">Owner: Engineer + Tech Lead · Model: <span style="font-weight:800">SONNET</span> (summary) · Gate: Human approvals + CI pass</div></div>
+        <div class="ph-chev">▾</div>
+      </div>
+      <div class="ph-body">
+        <div class="row2">
+          <div>
+            <h4 style="color:#0F3460;font-size:13px;font-weight:700;margin-bottom:8px">PR must contain:</h4>
+            <ul class="plain">
+              <li>Title: <code>[PF-042] SSO with Scoped JWT — Implementation</code></li>
+              <li>What this PR does (one paragraph)</li>
+              <li>How to test it (steps for reviewer)</li>
+              <li>DoD checklist — all items checked or dispositioned</li>
+              <li>CodeRabbit summary (auto-appended by CI)</li>
+              <li>Claude Security Review output (auto-appended)</li>
+              <li>Links: Jira PF, FCD, Tech Spec, LLD</li>
+            </ul>
+          </div>
+          <div>
+            <h4 style="color:#0F3460;font-size:13px;font-weight:700;margin-bottom:8px">Reviewers required:</h4>
+            <table><tr><th>Reviewer</th><th>Mandatory when</th></tr>
+            <tr><td>Tech Lead</td><td>Always</td></tr>
+            <tr><td>Peer Engineer</td><td>Always</td></tr>
+            <tr><td>Security Engineer</td><td>Any medium+ security finding</td></tr>
+            </table>
+            <div class="alert al-danger" style="margin-top:8px">🔴 <div><strong>No merge until all six CI checks pass.</strong> Enforced via branch protection — not a social contract.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== QUALITY GATES ===== -->
+<div id="sec-gates" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Phase 5 · Automated</div>
+    <h2>Quality Gates</h2>
+    <p>Five deterministic checks run in CI on every commit. All are hard blocks — the pipeline fails on any violation. Not advisory. Not warnings. Hard stops.</p>
+  </div>
+  <div class="sec-body">
+    <div class="alert al-danger">🔴 <div><strong>Zero-tolerance policy:</strong> Any gate that fails blocks the entire pipeline. There is no "merge and fix later." Fix the violation, push again, wait for CI.</div></div>
+    <div class="gate-card">
+      <div class="gate-num">1</div>
+      <div class="gate-info">
+        <h4>Linting <span class="badge b-gate">HARD BLOCK</span></h4>
+        <p>ESLint / Checkstyle / Pylint at maximum project-defined ruleset. Zero warnings tolerated — warnings are treated as errors in CI config. Formatter check (Prettier / Black) — format violations block pipeline. Import order and unused import checks.</p>
+        <div class="alert al-warn" style="margin-top:6px">💡 <div>Run linting locally before committing. A clean local lint run is part of the Phase 4 post-generation checklist.</div></div>
+      </div>
+    </div>
+    <div class="gate-card">
+      <div class="gate-num">2</div>
+      <div class="gate-info">
+        <h4>CodeRabbit Automated Review <span class="badge b-gate">MEDIUM+ BLOCK</span></h4>
+        <p>Triggered automatically on every PR. Reviews for: code smells, complexity violations, missing error handling, performance anti-patterns, test coverage gaps, and naming inconsistencies.</p>
+        <p style="margin-top:6px"><strong>Resolution rule:</strong> Any comment at severity Medium or above must be resolved OR explicitly acknowledged with a written rationale before merge. Low findings may be acknowledged without resolution. CodeRabbit summary is auto-appended to PR description.</p>
+      </div>
+    </div>
+    <div class="gate-card">
+      <div class="gate-num">3</div>
+      <div class="gate-info">
+        <h4>Claude Security Review <span class="badge b-opus" style="font-size:10px">OPUS</span> <span class="badge b-danger">HIGH/CRITICAL BLOCK</span></h4>
+        <p>Run as a CI step using the Appendix B.4 security prompt against the full diff. Covers: injection risks, broken auth, sensitive data exposure, security misconfiguration, insecure dependencies, secrets in code, input validation gaps.</p>
+        <table style="margin-top:8px">
+          <tr><th>Severity</th><th>Gate action</th></tr>
+          <tr><td><span class="badge b-danger">Critical / High</span></td><td>Pipeline fails — fix required before merge</td></tr>
+          <tr><td><span class="badge b-warn">Medium</span></td><td>Engineer provides written disposition (fix / accept risk with rationale)</td></tr>
+          <tr><td>Low / Info</td><td>Logged; no action required for merge</td></tr>
+        </table>
+        <p style="font-size:11px;color:#546E7A;margin-top:6px">Output is appended to the PR as a comment for audit trail. See Prompt Library for the exact prompt.</p>
+      </div>
+    </div>
+    <div class="gate-card">
+      <div class="gate-num">4</div>
+      <div class="gate-info">
+        <h4>Unit Test Coverage <span class="badge b-gate">≥80% BLOCK</span></h4>
+        <p>Coverage report generated on every CI run. New code must have ≥80% line coverage. Coverage delta tracked: no PR may reduce coverage below the current baseline. Coverage is measured on <em>new code only</em> — legacy coverage debt does not block new PFs.</p>
+      </div>
+    </div>
+    <div class="gate-card">
+      <div class="gate-num">5</div>
+      <div class="gate-info">
+        <h4>Dependency Scan <span class="badge b-danger">CRITICAL CVE BLOCK</span></h4>
+        <p>OWASP dependency check or Snyk runs on every PR. Zero known critical CVEs allowed in new or updated dependencies. High CVEs require accepted risk documentation or a fix within the PR.</p>
+        <div class="alert al-info" style="margin-top:6px">💡 <div>When AI generates a <code>import [new-library]</code> you haven't used before, run the dependency scan locally before pushing. New AI-suggested dependencies are a common source of CVE findings.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DOR ===== -->
+<div id="sec-dor" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Environment Promotion</div>
+    <h2>Definition of Readiness</h2>
+    <p>DoR governs promotion between environments. Distinct from DoD (which governs PR merge). A feature can pass DoD but fail DoR if environment-specific conditions are not met.</p>
+  </div>
+  <div class="sec-body">
+    <div class="env-tabs">
+      <button class="env-tab active" onclick="showEnv('lower')">Lower → QA</button>
+      <button class="env-tab" onclick="showEnv('qa')">QA → Pre-Prod</button>
+      <button class="env-tab" onclick="showEnv('preprod')">Pre-Prod → Production</button>
+    </div>
+
+    <div id="env-lower" class="env-content active">
+      <div class="card"><h3>DoR: Lower → QA</h3>
+        <ul class="checklist" id="dor-lower-cl">
+          <li><input type="checkbox" id="dl1" onchange="updateProg('dor-lower-cl','dl-prog')"><label for="dl1">All DoD items complete (22/22 checked)</label></li>
+          <li><input type="checkbox" id="dl2" onchange="updateProg('dor-lower-cl','dl-prog')"><label for="dl2">Feature flag created and defaulted to OFF in QA</label></li>
+          <li><input type="checkbox" id="dl3" onchange="updateProg('dor-lower-cl','dl-prog')"><label for="dl3">Integration test suite passes against lower environment</label></li>
+          <li><input type="checkbox" id="dl4" onchange="updateProg('dor-lower-cl','dl-prog')"><label for="dl4">Database migration tested on lower; rollback script verified</label></li>
+          <li><input type="checkbox" id="dl5" onchange="updateProg('dor-lower-cl','dl-prog')"><label for="dl5">No unresolved P1/P2 bugs from lower testing</label></li>
+          <li><input type="checkbox" id="dl6" onchange="updateProg('dor-lower-cl','dl-prog')"><label for="dl6">QA engineer has reviewed and accepted the test scenarios matrix</label></li>
+        </ul>
+        <div class="prog-wrap"><div class="prog-bar" id="dl-prog" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div id="env-qa" class="env-content">
+      <div class="card"><h3>DoR: QA → Pre-Production</h3>
+        <ul class="checklist" id="dor-qa-cl">
+          <li><input type="checkbox" id="dq1" onchange="updateProg('dor-qa-cl','dq-prog')"><label for="dq1">QA sign-off: all acceptance criteria verified in QA environment</label></li>
+          <li><input type="checkbox" id="dq2" onchange="updateProg('dor-qa-cl','dq-prog')"><label for="dq2">Load test executed: NFR targets met at production-representative load</label></li>
+          <li><input type="checkbox" id="dq3" onchange="updateProg('dor-qa-cl','dq-prog')"><label for="dq3">Security review: no open high/critical findings</label></li>
+          <li><input type="checkbox" id="dq4" onchange="updateProg('dor-qa-cl','dq-prog')"><label for="dq4">Observability verified: all metrics and log events visible in APM</label></li>
+          <li><input type="checkbox" id="dq5" onchange="updateProg('dor-qa-cl','dq-prog')"><label for="dq5">Runbook written: deployment steps, rollback procedure, monitoring checklist</label></li>
+          <li><input type="checkbox" id="dq6" onchange="updateProg('dor-qa-cl','dq-prog')"><label for="dq6">Feature flag toggle tested: on/off behaviour confirmed in QA</label></li>
+        </ul>
+        <div class="prog-wrap"><div class="prog-bar" id="dq-prog" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div id="env-preprod" class="env-content">
+      <div class="card"><h3>DoR: Pre-Production → Production</h3>
+        <ul class="checklist" id="dor-pp-cl">
+          <li><input type="checkbox" id="dp1" onchange="updateProg('dor-pp-cl','dp-prog')"><label for="dp1">Pre-prod sign-off from tech lead AND delivery manager</label></li>
+          <li><input type="checkbox" id="dp2" onchange="updateProg('dor-pp-cl','dp-prog')"><label for="dp2">Runbook reviewed and approved by on-call engineer</label></li>
+          <li><input type="checkbox" id="dp3" onchange="updateProg('dor-pp-cl','dp-prog')"><label for="dp3">On-call engineer briefed on rollback procedure</label></li>
+          <li><input type="checkbox" id="dp4" onchange="updateProg('dor-pp-cl','dp-prog')"><label for="dp4">Deployment window confirmed — no conflicting releases</label></li>
+          <li><input type="checkbox" id="dp5" onchange="updateProg('dor-pp-cl','dp-prog')"><label for="dp5">Feature flag strategy confirmed: % rollout or full enable</label></li>
+          <li><input type="checkbox" id="dp6" onchange="updateProg('dor-pp-cl','dp-prog')"><label for="dp6">Monitoring alert thresholds confirmed active</label></li>
+          <li><input type="checkbox" id="dp7" onchange="updateProg('dor-pp-cl','dp-prog')"><label for="dp7">Rollback time objective defined: error rate threshold + trigger time</label></li>
+        </ul>
+        <div class="prog-wrap"><div class="prog-bar" id="dp-prog" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ESCALATION ===== -->
+<div id="sec-escalation" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">When Things Block</div>
+    <h2>Escalation Paths</h2>
+    <p>The gate model is clear when things go right. These paths govern what happens when they don't. Every blocked scenario has a named resolution route and a time limit.</p>
+  </div>
+  <div class="sec-body">
+    <div class="esc-card">
+      <div class="esc-trigger">🔴 Trigger</div>
+      <div class="esc-title">FCD Cannot Complete — Requirements Missing or Contradictory</div>
+      <p style="font-size:12px;color:#546E7A;margin-bottom:8px">Phase 0 cannot proceed because Jira/Confluence content is missing, ambiguous, or contradictory.</p>
+      <ol class="steps"><li>Engineer flags to tech lead within <strong>4 hours</strong> of starting FCD assembly</li><li>Tech lead contacts product owner with a specific list of missing items (not "unclear requirements")</li><li>Product owner has <strong>1 business day</strong> to resolve or schedule a clarification session</li><li>If unresolved: delivery manager escalates to programme lead</li><li>PF does not proceed to Phase 1 until FCD is signed off — no exceptions</li></ol>
+    </div>
+    <div class="esc-card">
+      <div class="esc-trigger">🔁 Trigger</div>
+      <div class="esc-title">Gate Rejection Loop — Same Gate Fails More Than Twice</div>
+      <p style="font-size:12px;color:#546E7A;margin-bottom:8px"><strong>This is a process signal, not an engineer performance signal.</strong> Two rejections mean either the gate criteria are ambiguous or the engineer has not been adequately coached on the model.</p>
+      <ol class="steps"><li>On third rejection: tech lead <strong>pairs with the engineer</strong> to complete the gate artefact — not a review, a working session</li><li>Tech lead documents what was missing or misunderstood</li><li>If template ambiguity: update FCD template or DoD checklist</li><li>If capability gap: schedule targeted coaching before next PF</li></ol>
+    </div>
+    <div class="esc-card">
+      <div class="esc-trigger">🔐 Trigger</div>
+      <div class="esc-title">Security Finding with Ambiguous Severity</div>
+      <p style="font-size:12px;color:#546E7A;margin-bottom:8px">Claude Security Review produces a finding where correct severity is genuinely debatable.</p>
+      <ol class="steps"><li>Engineer proposes disposition with written rationale within <strong>24 hours</strong></li><li>Security engineer confirms or corrects disposition within <strong>48 hours</strong></li><li>If security engineer and tech lead disagree: engineering lead makes final call and documents it</li><li>Finding + disposition recorded in PR comment permanently — never silently closed</li></ol>
+    </div>
+    <div class="esc-card crit">
+      <div class="esc-trigger">⚡ Trigger — Declared by Engineering Lead Only</div>
+      <div class="esc-title">Critical Hotfix — Abbreviated Process</div>
+      <p style="font-size:12px;color:#546E7A;margin-bottom:8px">Production defect or security vulnerability requiring a fix that cannot wait for the full lifecycle.</p>
+      <table style="margin-bottom:8px">
+        <tr><th>Phase</th><th>Hotfix action</th></tr>
+        <tr><td>FCD</td><td>Requirement context only — target &lt;2 hours</td></tr>
+        <tr><td>HLD</td><td>SKIP</td></tr>
+        <tr><td>LLD</td><td>Tech lead drafts directly (not AI-generated) — target &lt;1 hour</td></tr>
+        <tr><td>Code</td><td>Sonnet generation with tech lead pairing</td></tr>
+        <tr><td>Testing</td><td>Unit tests for specific fix only; existing regression suite must pass</td></tr>
+        <tr><td>PR</td><td>Tech lead + one additional engineer approval (both mandatory)</td></tr>
+        <tr><td>Quality gates</td><td>Linting + Claude Security Review MANDATORY — no skipping</td></tr>
+        <tr><td>Deploy</td><td>Feature flag to 5% traffic, monitor 30 min before full rollout</td></tr>
+      </table>
+      <div class="alert al-warn">⚠️ <div><strong>Post-hotfix obligation:</strong> Within 3 business days, hold a retrospective. Expand abbreviated FCD to full standard. Add any new anti-pattern to the register.</div></div>
+    </div>
+    <div class="esc-card inf">
+      <div class="esc-trigger">🌱 Trigger</div>
+      <div class="esc-title">Greenfield Context — No Existing Codebase</div>
+      <ol class="steps"><li>Tech lead selects the closest analogous service as code context source</li><li>If no analogous service exists: team defines patterns explicitly in FCD Code Context before any generation</li><li>First PF on a greenfield service: tech lead must pair with engineer for Phase 4 — the generated output sets the pattern baseline</li><li>After first PF merges: patterns immediately added to shared context baseline</li></ol>
+    </div>
+  </div>
+</div>
+
+<!-- ===== METRICS ===== -->
+<div id="sec-metrics" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Measurement</div>
+    <h2>Process Metrics</h2>
+    <p>Without metrics, adoption becomes faith-based. These indicators are tracked per PF and rolled up per sprint. They connect directly to the Five-Index measurement framework.</p>
+  </div>
+  <div class="sec-body">
+    <div class="metric-row">
+      <div class="m-stat"><div class="ms-val">&lt;8h</div><div class="ms-label">FCD Assembly Time</div><div class="ms-target">⚠️ &gt;16h = context being forced</div></div>
+      <div class="m-stat"><div class="ms-val">&lt;20%</div><div class="ms-label">AI Rework Rate</div><div class="ms-target">⚠️ &gt;40% = context is thin or wrong</div></div>
+      <div class="m-stat"><div class="ms-val">&lt;5%</div><div class="ms-label">Defect Escape Rate</div><div class="ms-target">⚠️ Any recurrence = gate miscalibration</div></div>
+    </div>
+    <div class="card">
+      <h3>Input Quality Metrics — Is the context good enough?</h3>
+      <table>
+        <tr><th>Metric</th><th>Definition</th><th>Target</th><th>Warning signal</th></tr>
+        <tr><td>FCD assembly time</td><td>Hours from PF initiation to tech lead FCD sign-off</td><td>&lt;8 hours</td><td>&gt;16h: context being forced, not assembled</td></tr>
+        <tr><td>FCD rejection rate</td><td>% of FCDs sent back for rework at tech lead review</td><td>&lt;15%</td><td>&gt;30%: engineers not using the template correctly</td></tr>
+        <tr><td>Tech spec cycle time</td><td>Hours from FCD sign-off to tech spec approval</td><td>&lt;4 hours</td><td>&gt;8h: spec ambiguity or alignment gap</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Generation Quality Metrics — Is AI output trustworthy?</h3>
+      <table>
+        <tr><th>Metric</th><th>Definition</th><th>Target</th><th>Warning signal</th></tr>
+        <tr><td>AI rework rate</td><td>% of generated code requiring significant rewrite (&gt;20% of lines changed)</td><td>&lt;20%</td><td>&gt;40%: context is thin or wrong — see Hallucination Protocol</td></tr>
+        <tr><td>Hallucination rate</td><td>% of generation outputs containing at least one hallucinated import/method</td><td>&lt;10%</td><td>&gt;25%: Code Context needs richer examples</td></tr>
+        <tr><td>Gate rejection rate</td><td>% of PRs rejected at first review (DoD incomplete, CodeRabbit unresolved)</td><td>&lt;10%</td><td>&gt;25%: DoD not being used during development</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Delivery Quality Metrics — Is the model adding value?</h3>
+      <table>
+        <tr><th>Metric</th><th>Definition</th><th>Target</th><th>Warning signal</th></tr>
+        <tr><td>Defect escape rate</td><td>Bugs found post-merge that should have been caught by DoD gates</td><td>&lt;5% of PFs</td><td>Any recurring category = gate miscalibration</td></tr>
+        <tr><td>PR cycle time</td><td>Hours from first commit to merge</td><td>&lt;24 hours</td><td>&gt;48h: review bottleneck or quality gate failure loop</td></tr>
+        <tr><td>Context reuse rate</td><td>% of new FCD technical context inherited from shared baseline vs written from scratch</td><td>&gt;60%</td><td>&lt;30%: shared baseline not maintained</td></tr>
+      </table>
+    </div>
+    <div class="card" style="border-left:4px solid #1565C0">
+      <h3>📊 Five-Index Connection</h3>
+      <p style="font-size:12px;color:#546E7A;margin-bottom:10px">These metrics map directly to the Cybage Five-Index measurement framework. They are not standalone process metrics — they are index evidence.</p>
+      <table>
+        <tr><th>Metric</th><th>Maps to Index</th><th>Why</th></tr>
+        <tr><td>FCD quality, AI rework rate</td><td><strong>Adoption Index</strong></td><td>Are teams using the model correctly?</td></tr>
+        <tr><td>Defect escape rate, hallucination rate</td><td><strong>Quality Index</strong></td><td>Is AI-generated output trustworthy?</td></tr>
+        <tr><td>PR cycle time, gate rejection rate</td><td><strong>Velocity Index</strong></td><td>Is the model accelerating or adding friction?</td></tr>
+        <tr><td>Context reuse rate</td><td><strong>Utilisation Index</strong></td><td>Is accumulated knowledge being leveraged?</td></tr>
+        <tr><td>Defect escape, NFR compliance</td><td><strong>Outcome Index</strong></td><td>Is engineering quality improving business outcomes?</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADOPTION ===== -->
+<div id="sec-adoption" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Transformation</div>
+    <h2>Adoption Ramp-Up</h2>
+    <p>This guideline does not activate by being published. Transformation requires a staged adoption sequence. Skipping stages produces nominal compliance but practical reversion within two sprints.</p>
+  </div>
+  <div class="sec-body">
+    <div class="card" style="border-left:4px solid #F57F17">
+      <h3>⚡ AI Literacy Prerequisites</h3>
+      <p style="font-size:12px;color:#546E7A;margin-bottom:10px">Before a developer works their first PF under this model, they must demonstrate ability to:</p>
+      <table>
+        <tr><th>Skill</th><th>How to verify</th></tr>
+        <tr><td>Write a structured prompt with context injection and hard constraints</td><td>Complete a prompt workshop exercise</td></tr>
+        <tr><td>Read AI-generated code critically — identify hallucinations and pattern violations</td><td>Review a seeded hallucination exercise</td></tr>
+        <tr><td>Assemble a small FCD from a given Jira + Confluence spec</td><td>FCD peer review exercise</td></tr>
+        <tr><td>Know the Opus vs Sonnet split for their tasks</td><td>Model selection quiz (5 questions)</td></tr>
+      </table>
+      <div class="alert al-warn" style="margin-top:8px">⚠️ <div>If the team lacks this baseline, a half-day AI literacy workshop precedes Stage 1. Starting Stage 1 without it wastes the pilot and erodes confidence in the model.</div></div>
+    </div>
+
+    <div class="stage-card">
+      <div class="st-hdr"><div class="st-num">1</div><h3>Pilot</h3><span class="st-time">Weeks 1–2</span></div>
+      <div class="st-body">
+        <p style="font-size:12px;color:#546E7A;margin-bottom:8px"><strong>Who:</strong> One senior engineer + tech lead, working together. <strong>What:</strong> One low-risk, well-understood PF — an enhancement, not a new domain.</p>
+        <ul class="plain">
+          <li>Tech lead assembles the FCD; engineer reviews it (inverted for learning)</li>
+          <li>Both attend every phase review together</li>
+          <li>After completion: 30-min debrief — what worked, what was awkward, what was missing</li>
+          <li>Update FCD template and Appendix B prompts from findings before Stage 2</li>
+        </ul>
+        <div class="alert al-ok" style="margin-top:8px">🎯 <div><strong>Goal:</strong> Complete the full lifecycle end-to-end. Surface every friction point. Validate the gate sequence.</div></div>
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <div class="st-hdr"><div class="st-num">2</div><h3>Expansion</h3><span class="st-time">Weeks 3–4</span></div>
+      <div class="st-body">
+        <p style="font-size:12px;color:#546E7A;margin-bottom:8px"><strong>Who:</strong> Two engineers independently, tech lead reviewing both. <strong>What:</strong> Two concurrent PFs of moderate complexity.</p>
+        <ul class="plain">
+          <li>Each engineer assembles their own FCD independently</li>
+          <li>Tech lead reviews both FCDs in a shared 30-min session — surface inconsistencies</li>
+          <li>Any hallucination or gate rejection reviewed as a team learning, not an individual failure</li>
+        </ul>
+        <div class="alert al-ok" style="margin-top:8px">🎯 <div><strong>Goal:</strong> Validate the model works without tech lead co-piloting. Identify coaching gaps.</div></div>
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <div class="st-hdr"><div class="st-num">3</div><h3>Full Team Adoption</h3><span class="st-time">Month 2</span></div>
+      <div class="st-body">
+        <p style="font-size:12px;color:#546E7A;margin-bottom:8px"><strong>Who:</strong> Entire team. <strong>What:</strong> All new PFs follow the model. In-flight work under old process continues until complete.</p>
+        <ul class="plain">
+          <li>Introduce DoR gates for the first time</li>
+          <li>Begin tracking process metrics from this point</li>
+          <li>Hold the first formal retrospective using the continuous improvement cycle</li>
+          <li>Update shared context baseline with patterns from Stages 1–2</li>
+        </ul>
+        <div class="alert al-ok" style="margin-top:8px">🎯 <div><strong>Goal:</strong> Model is the default, not the exception. Metrics baseline established.</div></div>
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <div class="st-hdr"><div class="st-num">4</div><h3>Optimisation</h3><span class="st-time">Month 3+</span></div>
+      <div class="st-body">
+        <p style="font-size:12px;color:#546E7A;margin-bottom:8px"><strong>Who:</strong> Entire team with engineering lead visibility. <strong>What:</strong> Model is stable; focus shifts to efficiency and measurement.</p>
+        <ul class="plain">
+          <li>Process metrics reviewed every sprint retrospective</li>
+          <li>Anti-pattern register actively maintained</li>
+          <li>Prompt library expanded from team-specific learnings</li>
+          <li>Engineering lead assesses transformation progress against Five-Index baseline</li>
+        </ul>
+        <div class="alert al-ok" style="margin-top:8px">🏁 <div><strong>Adoption is complete when:</strong> Context reuse rate &gt;60%, AI rework rate &lt;20%, defect escape rate &lt;5% — sustained over three consecutive sprints.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PROMPTS ===== -->
+<div id="sec-prompts" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Reference</div>
+    <h2>Prompt Library</h2>
+    <p>Model assignments are fixed — do not substitute. Prompts are versioned. Changes require tech lead approval and testing against 3 historical PF scenarios before deployment.</p>
+  </div>
+  <div class="sec-body">
+    <div class="alert al-warn">📌 <div><strong>Prompt governance:</strong> These prompts are production assets. Track changes in the Prompt Performance Log. When a model version updates, re-test each prompt before switching. See AP-M-009.</div></div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><h3 style="margin:0">B.1 — HLD Generation</h3><span class="badge b-opus">OPUS</span><span style="font-size:11px;color:#90A4AE">v1.1 · Use at Phase 2</span></div>
+      <div class="prompt-wrap"><button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      <pre>You are a senior software architect. Generate a High-Level Design for the Product Function in the Feature Context Document below.
+
+Requirements:
+- Follow ONLY the architecture patterns listed in Technical Context
+- NFR targets are BINDING — design must explicitly state how each target is met
+- Identify failure modes for the primary flow AND at least two secondary flows
+- Explicitly state how each anti-pattern in the FCD is avoided in this design
+
+Output format (required):
+1. Component interaction description
+2. Primary flow sequence (numbered steps)
+3. Failure flow sequences (minimum 2, numbered steps each)
+4. NFR compliance rationale (per NFR target)
+5. Top 3 risks with specific mitigations
+
+[PASTE APPROVED FCD HERE]</pre></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><h3 style="margin:0">B.2 — Code Generation</h3><span class="badge b-sonnet">SONNET</span><span style="font-size:11px;color:#90A4AE">v1.1 · Use at Phase 4</span></div>
+      <div class="prompt-wrap"><button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      <pre>You are a senior software engineer. Generate production-quality implementation code for [MODULE NAME] based on the approved LLD below.
+
+Hard rules — NON-NEGOTIABLE:
+- Follow every pattern in Code Context EXACTLY (naming, error handling, logging, structure)
+- Apply every anti-pattern prohibition from FCD section 4.8
+- Do NOT introduce dependencies not in the existing dependency manifest
+- All configuration via config schema — zero hardcoded values
+- All external inputs validated before use
+- Emit structured log events at all points specified in Observability Design
+
+Generate alongside the implementation:
+- Complete unit tests: happy path + ALL error paths + boundary conditions
+- Test style MUST match the test style example in Code Context
+
+[PASTE FCD Technical Context + Code Context + Approved LLD + Anti-patterns]</pre></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><h3 style="margin:0">B.3 — Test Scenario Matrix</h3><span class="badge b-sonnet">SONNET</span><span style="font-size:11px;color:#90A4AE">v1.1 · Use at Phase 5</span></div>
+      <div class="prompt-wrap"><button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      <pre>You are a QA engineer. Generate a complete test scenario matrix from the Feature Context Document below.
+
+For each scenario provide:
+- Scenario ID (TSC-NNN)
+- Description
+- Input conditions (exact values where possible)
+- Expected outcome (status code + response body format)
+- Test type: unit / integration / contract / load / e2e
+- DoD criterion it validates (AC-NN or NFR)
+
+IMPORTANT: Flag any acceptance criterion with NO corresponding scenario as a coverage gap.
+Minimum: 2 scenarios per acceptance criterion (happy path + at least 1 failure path).
+
+[PASTE FCD — Requirement Context section only]</pre></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><h3 style="margin:0">B.4 — Claude Security Review</h3><span class="badge b-opus">OPUS</span><span style="font-size:11px;color:#90A4AE">v1.1 · Run in CI at Phase 5</span></div>
+      <div class="prompt-wrap"><button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      <pre>You are a security engineer reviewing a code diff. Analyse the following changes for security vulnerabilities.
+
+Check for ALL of the following:
+- Injection risks (SQL, command, template, header injection)
+- Broken or missing authentication/authorisation
+- Sensitive data exposure (logging PII, unencrypted storage, unsafe serialisation)
+- Security misconfiguration (CORS, security headers, TLS settings, error messages)
+- Insecure dependencies (flag any new dependency for manual CVE check)
+- Hardcoded secrets or credentials (including in comments and test files)
+- Missing input validation on any external input
+- Insecure direct object references or path traversal risks
+
+For each finding provide:
+- Severity: Critical / High / Medium / Low / Informational
+- Location: file name and line number
+- Description: what the vulnerability is and how it could be exploited
+- Remediation: the specific fix required
+
+Final line (required): "Security gate: PASS / FAIL — [N] findings above Medium severity"
+
+[PASTE CODE DIFF HERE]</pre></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ANTI-PATTERNS ===== -->
+<div id="sec-antipatterns" class="sec">
+  <div class="sec-hdr">
+    <div class="sec-tag">Failure Modes</div>
+    <h2>Anti-Patterns</h2>
+    <p>These are the failure modes that erode the model's value. Each has been observed in teams adopting context-first delivery. Treat them as hard rules, not suggestions. Click to expand.</p>
+  </div>
+  <div class="sec-body">
+    <div class="alert al-info">📌 <div>The anti-pattern register is a living document. New entries are added after every incident retrospective. Tech leads own it. A register last updated 6 months ago is documentation theatre — see AP-M-007.</div></div>
+    <div id="anti-list">
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-001</span><span class="anti-title">Thin context, fast generation</span></div><div class="anti-body">Skipping FCD assembly to start coding faster. The instinct is understandable — writing context feels like overhead before "real work." But AI generation on thin context produces technically plausible but functionally wrong code. The review, rework, and re-test cycle costs 2–4× the time saved on context assembly. The FCD is not overhead — it is the product specification.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-002</span><span class="anti-title">Context as a one-time document</span></div><div class="anti-body">Writing the FCD at the start of a PF and never updating it as requirements evolve or design decisions change. AI generation on stale context produces confidently wrong output — it will generate code that was correct for the original requirement but not the current one. The FCD must be treated as the source of truth throughout the delivery cycle. When requirements change, update the FCD before regenerating anything.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-003</span><span class="anti-title">AI review replacing human review</span></div><div class="anti-body">Using CodeRabbit and Claude Security Review as the only review mechanism — skipping the tech lead review because "the AI already checked it." Automated tools catch structural, pattern, and security issues. They do not catch design intent misalignment, business logic errors, or strategic mistakes. A senior engineer reviewing a PR is doing something qualitatively different from an AI tool. Both are required.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-004</span><span class="anti-title">Merging without full test gate</span></div><div class="anti-body">Merging a PR after all human approvals when CI is still running. "It'll pass — just let it catch up." This breaks the sequence guarantee that is the foundation of the model. If tests fail after merge, the main branch is broken, every other engineer's work is blocked, and you've lost the context to fix it quickly. Tests must be green before merge. This is enforced via branch protection — it is not negotiable.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-005</span><span class="anti-title">Product Function too large</span></div><div class="anti-body">A PF that spans multiple services, multiple data domains, and multiple teams is not a PF — it is a programme. This model works because a PF fits within one team's context and one iteration's scope. When a PF is too large, the FCD becomes unmanageably large, the AI generation produces code for parts of the system it doesn't have enough context for, and the gate sequence becomes impractical. Decompose before context assembly begins.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-006</span><span class="anti-title">Skipping observability wiring</span></div><div class="anti-body">Treating metrics, structured logging, and distributed tracing as post-delivery cleanup tasks. "We'll add monitoring in the next sprint." Features that cannot be measured in production are not complete — they are deployed blind. When something fails in production, you have no data to debug it. Observability is specified in the Tech Spec (section 4.7) and is part of DoD. It is generated alongside the code, not added later.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-007</span><span class="anti-title">Anti-pattern register not maintained</span></div><div class="anti-body">The register only works if it is updated continuously. An anti-pattern discovered in a post-incident review but not added to the register will be repeated by the next engineer who works in the same area. Tech leads own the register and update it as part of every retrospective. A register last updated six months ago is documentation theatre — it gives the appearance of governance without the substance.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-008</span><span class="anti-title">Sensitive data in AI prompts</span></div><div class="anti-body">Code context assembled from real test fixtures, integration configs, or legacy code often contains real credentials, user data, or client-identifying information. Sending this to an external AI API is a data breach risk regardless of the provider's stated data handling policies. Sanitisation is mandatory before context assembly. The tech lead is accountable for confirming sanitisation before Phase 0 sign-off. For regulated industries, this must be validated against the client contract.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-009</span><span class="anti-title">Prompt drift without governance</span></div><div class="anti-body">Engineers customise Appendix B prompts informally — adding instructions for their PF, removing constraints they find annoying, adjusting tone — without versioning or tech lead approval. Over time, different engineers use materially different prompts for the same task, producing inconsistent output quality and making team-wide debugging impossible. Prompt changes must go through the same review process as code changes. The Prompt Performance Log (Appendix D) is the governance mechanism.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-010</span><span class="anti-title">Patching hallucinations instead of improving context</span></div><div class="anti-body">When AI generates a hallucinated method call or non-existent class reference, the instinct is to fix the individual lines and move on. This treats the symptom. Hallucinations are a context signal: the AI lacked information it needed to generate correctly. The correct response is to identify what was missing (usually a Code Context gap), add it to the FCD, and regenerate the module. Teams that patch without improving context see the same hallucinations on the next PF touching the same domain.</div></div>
+      <div class="anti-item"><div class="anti-hdr" onclick="toggleAnti(this)"><span class="anti-code">AP-M-011</span><span class="anti-title">Isolated FCD assembly with no shared baseline</span></div><div class="anti-body">Every PF builds its technical context from scratch because no team-level baseline exists. Anti-patterns are discovered repeatedly. Code examples are inconsistently chosen. NFR targets vary without justification. This is the compounding-return failure mode — each PF should build on prior PFs' learnings. Maintaining the shared context baseline is not overhead: it is the mechanism by which the team gets smarter with each delivery. Target: &gt;60% context reuse rate within three months.</div></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end #main -->
+<script>
+// Navigation
+function show(id) {
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.sb-link').forEach(l => l.classList.remove('active'));
+  var sec = document.getElementById('sec-' + id);
+  if (sec) sec.classList.add('active');
+  event && event.currentTarget && event.currentTarget.classList.add('active');
+  // update active sidebar link
+  document.querySelectorAll('.sb-link').forEach(l => {
+    if (l.getAttribute('onclick') && l.getAttribute('onclick').includes("'" + id + "'")) l.classList.add('active');
+  });
+  window.scrollTo(0,0);
+}
+
+// Phase accordion
+function togglePhase(id) {
+  var card = document.getElementById(id);
+  var body = card.querySelector('.ph-body');
+  var isOpen = card.classList.contains('open');
+  card.classList.toggle('open', !isOpen);
+  body.classList.toggle('open', !isOpen);
+}
+
+// Example toggles
+function toggleEx(id) {
+  var el = document.getElementById(id);
+  el.classList.toggle('open');
+  var btn = el.previousElementSibling;
+  if (btn && btn.classList.contains('ex-btn')) {
+    btn.textContent = el.classList.contains('open') ? btn.textContent.replace('▶','▼') : btn.textContent.replace('▼','▶');
+  }
+}
+
+// Anti-pattern accordion
+function toggleAnti(hdr) {
+  var body = hdr.parentElement.querySelector('.anti-body');
+  body.classList.toggle('open');
+}
+
+// Model decision helper
+function showModel(task, model, reason) {
+  var res = document.getElementById('model-result');
+  res.style.display = 'block';
+  document.getElementById('mr-task').textContent = task;
+  document.getElementById('mr-model').textContent = 'Use Claude ' + model;
+  document.getElementById('mr-reason').textContent = reason;
+  var color = model === 'Opus' ? '#7C4DFF' : '#00897B';
+  res.style.borderLeftColor = color;
+  res.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Environment tabs (DoR)
+function showEnv(id) {
+  document.querySelectorAll('.env-content').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.env-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('env-' + id).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// Progress bar updater (generic)
+function updateProg(clId, barId) {
+  var cl = document.getElementById(clId);
+  if (!cl) return;
+  var boxes = cl.querySelectorAll('input[type=checkbox]');
+  var checked = cl.querySelectorAll('input[type=checkbox]:checked').length;
+  var pct = boxes.length ? (checked / boxes.length * 100) : 0;
+  var bar = document.getElementById(barId);
+  if (bar) bar.style.width = pct + '%';
+  saveState();
+}
+
+// DoD progress (per group + total)
+var dodGroups = {
+  fc: 3, tc: 4, sc: 4, ob: 3, qg: 5, dc: 3
+};
+function updateProg2(prefix, total) {
+  var checked = 0;
+  for (var i = 1; i <= total; i++) {
+    var el = document.getElementById(prefix + i);
+    if (el && el.checked) checked++;
+  }
+  var pct = total ? (checked / total * 100) : 0;
+  var bar = document.getElementById(prefix + '-prog');
+  var lbl = document.getElementById(prefix + '-prog-lbl');
+  if (bar) bar.style.width = pct + '%';
+  if (lbl) lbl.textContent = checked + '/' + total;
+  updateDodTotal();
+  saveState();
+}
+function updateDodTotal() {
+  var total = 0, checked = 0;
+  Object.keys(dodGroups).forEach(function(prefix) {
+    var n = dodGroups[prefix];
+    for (var i = 1; i <= n; i++) {
+      total++;
+      var el = document.getElementById(prefix + i);
+      if (el && el.checked) checked++;
+    }
+  });
+  var lbl = document.getElementById('dod-total');
+  if (lbl) lbl.textContent = checked + ' / ' + total + ' items';
+}
+function resetDod() {
+  Object.keys(dodGroups).forEach(function(prefix) {
+    for (var i = 1; i <= dodGroups[prefix]; i++) {
+      var el = document.getElementById(prefix + i);
+      if (el) el.checked = false;
+    }
+    updateProg2(prefix, dodGroups[prefix]);
+  });
+  updateDodTotal();
+  saveState();
+}
+
+// Copy prompt
+function copyPrompt(btn) {
+  var pre = btn.parentElement.querySelector('pre');
+  if (!pre) return;
+  navigator.clipboard.writeText(pre.textContent).then(function() {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }).catch(function() {
+    btn.textContent = 'Copy'; 
+  });
+}
+
+// LocalStorage persistence
+function saveState() {
+  try {
+    var state = {};
+    document.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+      if (cb.id) state[cb.id] = cb.checked;
+    });
+    localStorage.setItem('ainative-state', JSON.stringify(state));
+  } catch(e) {}
+}
+function loadState() {
+  try {
+    var saved = localStorage.getItem('ainative-state');
+    if (!saved) return;
+    var state = JSON.parse(saved);
+    Object.keys(state).forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.type === 'checkbox') {
+        el.checked = state[id];
+        el.dispatchEvent(new Event('change'));
+      }
+    });
+  } catch(e) {}
+}
+
+// Init
+window.addEventListener('DOMContentLoaded', function() {
+  loadState();
+  // recompute all progress bars after load
+  ['sp','pg'].forEach(function(prefix) {
+    updateProg(prefix + '-cl', prefix + '-prog');
+  });
+  ['dl','dq','dp'].forEach(function(prefix) {
+    updateProg('dor-' + (prefix==='dl'?'lower':prefix==='dq'?'qa':'pp') + '-cl', prefix + '-prog');
+  });
+  Object.keys(dodGroups).forEach(function(p) { updateProg2(p, dodGroups[p]); });
+});
+</script>
+</body>
+</html>

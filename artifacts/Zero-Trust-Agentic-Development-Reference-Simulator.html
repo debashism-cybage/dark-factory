@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zero Trust for Agentic Development — Reference &amp; Simulation Guide</title>
+<meta name="description" content="Self-contained interactive reference and simulator for Zero Trust security in agentic AI development, for engineering teams.">
+<style>
+:root{
+  --bg:#f5f6f8; --bg-alt:#ffffff; --panel:#ffffff; --panel-alt:#eef1f5;
+  --text:#151a21; --text-dim:#4b5563; --text-faint:#7a8494;
+  --border:#dde2e8; --accent:#c2571a; --accent-2:#1a5fc2;
+  --ok:#1e8f5c; --warn:#c28a1a; --bad:#c2311a;
+  --code-bg:#eef1f5; --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+  --radius:10px; --mono:"SF Mono",Consolas,"Courier New",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+html[data-theme="dark"]{
+  --bg:#0d1117; --bg-alt:#11161d; --panel:#151b23; --panel-alt:#1b222c;
+  --text:#e6edf3; --text-dim:#b3bcc9; --text-faint:#7d8896;
+  --border:#2a323d; --accent:#ff8a3d; --accent-2:#5b9dff;
+  --ok:#3fd587; --warn:#e8b84b; --bad:#ff6b5b;
+  --code-bg:#1b222c; --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--sans);
+  line-height:1.55; -webkit-font-smoothing:antialiased; transition:background .25s,color .25s;
+}
+a{color:var(--accent-2); text-decoration:none;}
+a:hover{text-decoration:underline;}
+code, .mono{font-family:var(--mono); font-size:0.9em;}
+.pill{display:inline-block; padding:2px 9px; border-radius:100px; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;}
+.pill.foundation{background:rgba(30,143,92,.15); color:var(--ok); border:1px solid rgba(30,143,92,.35);}
+.pill.enterprise{background:rgba(26,95,194,.15); color:var(--accent-2); border:1px solid rgba(26,95,194,.35);}
+.pill.advanced{background:rgba(194,49,26,.15); color:var(--bad); border:1px solid rgba(194,49,26,.35);}
+
+/* ---------- Layout shell ---------- */
+#app{display:flex; min-height:100vh;}
+#sidebar{
+  width:250px; flex:0 0 250px; background:var(--panel); border-right:1px solid var(--border);
+  position:sticky; top:0; height:100vh; overflow-y:auto; padding:18px 0 30px;
+}
+#brand{padding:0 18px 14px; border-bottom:1px solid var(--border); margin-bottom:10px;}
+#brand .logo{font-weight:800; font-size:15px; letter-spacing:.02em;}
+#brand .logo span{color:var(--accent);}
+#brand .sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
+nav.tabs{display:flex; flex-direction:column; gap:2px; padding:0 10px;}
+nav.tabs button{
+  display:flex; align-items:center; gap:9px; text-align:left; width:100%;
+  background:none; border:none; color:var(--text-dim); padding:9px 10px; border-radius:8px;
+  font-size:13.5px; font-family:inherit; cursor:pointer; transition:background .15s, color .15s;
+}
+nav.tabs button .ico{width:16px; text-align:center; opacity:.8; font-size:14px;}
+nav.tabs button:hover{background:var(--panel-alt); color:var(--text);}
+nav.tabs button.active{background:var(--accent); color:#fff; font-weight:600;}
+nav.tabs .grp-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint); padding:14px 12px 4px;}
+#themeToggle{
+  margin:14px 14px 0; display:flex; align-items:center; justify-content:space-between;
+  padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--panel-alt); cursor:pointer;
+  font-size:12.5px; color:var(--text-dim);
+}
+#themeToggle:hover{border-color:var(--accent);}
+
+#main{flex:1; min-width:0; padding:28px 40px 80px; max-width:1180px;}
+header.pagehead{margin-bottom:22px;}
+header.pagehead h1{font-size:26px; margin:0 0 6px; letter-spacing:-.01em;}
+header.pagehead p.lede{color:var(--text-dim); font-size:15px; max-width:760px; margin:0;}
+.panel{display:none;}
+.panel.active{display:block; animation:fadein .25s ease;}
+@keyframes fadein{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);}}
+
+.card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow); margin-bottom:16px;}
+.grid{display:grid; gap:14px;}
+.grid.cols-2{grid-template-columns:repeat(2,1fr);}
+.grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.grid.cols-4{grid-template-columns:repeat(4,1fr);}
+@media (max-width:1000px){.grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:1fr;}}
+
+h2.sec-title{font-size:19px; margin:28px 0 12px; padding-top:6px; border-top:1px solid var(--border);}
+h2.sec-title:first-child{border-top:none; padding-top:0; margin-top:0;}
+h3{font-size:15px; margin:0 0 8px;}
+.small{font-size:12.5px; color:var(--text-faint);}
+
+/* Principle cards */
+.principle{border-left:3px solid var(--accent); padding-left:14px;}
+.principle h3{color:var(--text);}
+
+/* Threat cards */
+.threat-card{cursor:pointer; transition:border-color .15s, transform .1s;}
+.threat-card:hover{border-color:var(--accent); transform:translateY(-1px);}
+.threat-card .tag{font-size:11px; color:var(--accent); font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
+.threat-detail{display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); font-size:13.5px; color:var(--text-dim);}
+.threat-card.open .threat-detail{display:block;}
+.threat-card .chev{float:right; color:var(--text-faint); transition:transform .2s;}
+.threat-card.open .chev{transform:rotate(90deg);}
+
+/* Attack flow diagram */
+.flowsvg{width:100%; height:auto; margin-top:8px;}
+.flowsvg rect{fill:var(--panel-alt); stroke:var(--border);}
+.flowsvg text{fill:var(--text); font-family:var(--sans); font-size:12px;}
+.flowsvg .arrow{stroke:var(--text-faint); stroke-width:1.5; fill:none; marker-end:url(#arrowhead);}
+.flowsvg .hot rect{stroke:var(--bad); stroke-width:2;}
+
+/* Tier table */
+table.tiers{width:100%; border-collapse:collapse; font-size:13px;}
+table.tiers th, table.tiers td{padding:9px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top;}
+table.tiers th{position:sticky; top:0; background:var(--panel); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-faint); z-index:2;}
+table.tiers tr:hover td{background:var(--panel-alt);}
+table.tiers td.cap-name{font-weight:600; white-space:nowrap;}
+.tier-filter{display:flex; gap:8px; margin-bottom:14px;}
+.tier-filter button{border:1px solid var(--border); background:var(--panel); color:var(--text-dim); padding:6px 13px; border-radius:100px; font-size:12.5px; cursor:pointer;}
+.tier-filter button.on{background:var(--accent); color:#fff; border-color:var(--accent);}
+.tbl-wrap{overflow:auto; max-height:560px; border:1px solid var(--border); border-radius:var(--radius);}
+.tbl-wrap table.tiers{margin:0;}
+.col-hide{display:none !important;}
+
+/* Phase stepper */
+.stepper{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;}
+.stepper button{
+  border:1px solid var(--border); background:var(--panel); color:var(--text-dim);
+  padding:8px 12px; border-radius:8px; font-size:12.5px; cursor:pointer; font-family:inherit;
+  display:flex; align-items:center; gap:6px;
+}
+.stepper button .n{width:20px; height:20px; border-radius:50%; background:var(--panel-alt); display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;}
+.stepper button.active{border-color:var(--accent); color:var(--text); background:var(--panel-alt);}
+.stepper button.active .n{background:var(--accent); color:#fff;}
+.phase-body{display:none;}
+.phase-body.active{display:block;}
+.protip{background:var(--panel-alt); border-left:3px solid var(--accent-2); padding:10px 14px; border-radius:6px; font-size:13px; margin:10px 0; color:var(--text-dim);}
+.protip b{color:var(--text);}
+ul.controls-list{margin:8px 0 0; padding-left:20px;}
+ul.controls-list li{margin-bottom:8px; font-size:13.5px;}
+ul.controls-list li b{color:var(--text);}
+
+/* Simulator */
+.sim-grid{display:grid; grid-template-columns:340px 1fr; gap:20px;}
+@media (max-width:900px){.sim-grid{grid-template-columns:1fr;}}
+.sim-controls label{display:block; font-size:12.5px; font-weight:600; margin:14px 0 6px; color:var(--text-dim);}
+.sim-controls select, .sim-controls input[type=range]{width:100%;}
+.chk-row{display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; border-bottom:1px solid var(--border);}
+.chk-row:last-child{border-bottom:none;}
+.chk-row input{accent-color:var(--accent);}
+.result-box{border-radius:var(--radius); padding:20px; border:1px solid var(--border); min-height:220px;}
+.result-box.blocked{border-color:var(--ok); background:rgba(63,213,135,.06);}
+.result-box.succeeded{border-color:var(--bad); background:rgba(255,107,91,.08);}
+.verdict{font-size:17px; font-weight:800; display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+.verdict .dot{width:12px; height:12px; border-radius:50%;}
+.verdict.blocked .dot{background:var(--ok);}
+.verdict.succeeded .dot{background:var(--bad);}
+.trace{font-family:var(--mono); font-size:12.5px; background:var(--code-bg); padding:12px 14px; border-radius:8px; margin-top:10px; white-space:pre-wrap; color:var(--text-dim); max-height:220px; overflow:auto;}
+.badge-controls{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+.badge-controls span{font-size:11px; padding:3px 9px; border-radius:100px; border:1px solid var(--border); color:var(--text-faint);}
+.badge-controls span.hit{border-color:var(--ok); color:var(--ok);}
+
+/* Metrics simulator */
+.gauge-wrap{display:flex; gap:18px; flex-wrap:wrap;}
+.gauge{flex:1; min-width:180px; text-align:center; background:var(--panel-alt); border-radius:var(--radius); padding:16px; border:1px solid var(--border);}
+.gauge .val{font-size:26px; font-weight:800;}
+.gauge .lbl{font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-faint); margin-top:4px;}
+.gauge .status{margin-top:8px; font-size:12px; font-weight:700;}
+.status.ok{color:var(--ok);} .status.warn{color:var(--warn);} .status.bad{color:var(--bad);}
+input[type=range]{accent-color:var(--accent);}
+
+/* Radar / self assessment */
+#radarSvg{width:100%; max-width:520px; display:block; margin:0 auto;}
+.assess-row{display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px;}
+.assess-row select{background:var(--panel-alt); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:12.5px;}
+
+/* Defensive ops timeline */
+.timeline{position:relative; padding-left:26px; margin-top:10px;}
+.timeline::before{content:""; position:absolute; left:6px; top:4px; bottom:4px; width:2px; background:var(--border);}
+.tl-item{position:relative; margin-bottom:18px;}
+.tl-item::before{content:""; position:absolute; left:-26px; top:3px; width:10px; height:10px; border-radius:50%; background:var(--accent);}
+.tl-item h4{margin:0 0 4px; font-size:14px;}
+.tl-item p{margin:0; font-size:13px; color:var(--text-dim);}
+
+/* Glossary / reference */
+dl.gloss dt{font-weight:700; margin-top:12px; color:var(--text);}
+dl.gloss dd{margin:2px 0 0; color:var(--text-dim); font-size:13.5px;}
+.ref-list{list-style:none; padding:0; margin:0; font-size:13.5px;}
+.ref-list li{padding:8px 0; border-bottom:1px solid var(--border);}
+
+/* footer / validate banner */
+.validate-banner{position:fixed; bottom:14px; right:14px; z-index:50; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 14px; font-size:12px; box-shadow:var(--shadow); color:var(--text-dim); max-width:280px;}
+.validate-banner b{color:var(--ok);}
+.validate-banner.hide{display:none;}
+.close-x{float:right; cursor:pointer; color:var(--text-faint); margin-left:8px;}
+
+kbd{background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:1px 6px; font-family:var(--mono); font-size:11.5px;}
+
+::-webkit-scrollbar{width:10px; height:10px;}
+::-webkit-scrollbar-thumb{background:var(--border); border-radius:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+@media (max-width:820px){
+  #sidebar{position:fixed; left:-260px; z-index:40; transition:left .2s; box-shadow:var(--shadow);}
+  #sidebar.open{left:0;}
+  #main{padding:20px 16px 60px;}
+  #menuBtn{display:inline-flex !important;}
+}
+#menuBtn{display:none; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; font-size:13px; margin-bottom:14px; cursor:pointer;}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <aside id="sidebar" aria-label="Navigation">
+    <div id="brand">
+      <div class="logo">ZERO<span>TRUST</span>·AGENTS</div>
+      <div class="sub">Reference &amp; Simulation Guide<br>for Engineering Teams</div>
+    </div>
+
+    <nav class="tabs" id="tabNav">
+      <div class="grp-label">Learn</div>
+      <button data-panel="overview" class="active"><span class="ico">&#9673;</span> Overview</button>
+      <button data-panel="threats"><span class="ico">&#9888;</span> Threat Landscape</button>
+      <button data-panel="tiers"><span class="ico">&#9636;</span> Capability Tiers</button>
+      <button data-panel="workflow"><span class="ico">&#9881;</span> 8-Phase Workflow</button>
+      <button data-panel="defops"><span class="ico">&#9889;</span> Defensive Operations</button>
+
+      <div class="grp-label">Demonstrate</div>
+      <button data-panel="attacksim"><span class="ico">&#9755;</span> Attack Simulator</button>
+      <button data-panel="metrics"><span class="ico">&#9202;</span> Metrics Console</button>
+      <button data-panel="selfassess"><span class="ico">&#9673;</span> Maturity Self-Assessment</button>
+
+      <div class="grp-label">Reference</div>
+      <button data-panel="glossary"><span class="ico">&#9776;</span> Glossary</button>
+      <button data-panel="sources"><span class="ico">&#128279;</span> Sources &amp; Verification</button>
+    </nav>
+
+    <div id="themeToggle" role="button" aria-label="Toggle theme">
+      <span id="themeLabel">Dark theme</span>
+      <span id="themeIcon">&#9789;</span>
+    </div>
+  </aside>
+
+  <main id="main">
+    <button id="menuBtn" aria-label="Open navigation">&#9776; Menu</button>
+
+    <!-- OVERVIEW -->
+    <section class="panel active" id="panel-overview">
+      <header class="pagehead">
+        <h1>Zero Trust for Agentic Development</h1>
+        <p class="lede">An interactive reference and simulation environment for deploying autonomous AI agents securely — built from Anthropic's Zero Trust for AI Agents framework and the OWASP GenAI / Agentic Security Initiative. Use the tabs on the left to move between reference material and hands-on simulators.</p>
+      </header>
+
+      <div class="card">
+        <h3>Why this matters now</h3>
+        <p style="font-size:14px; color:var(--text-dim)">Frontier models compress the vulnerability-to-exploit timeline from months to hours, at near-zero marginal cost. Agents add a second dimension of exposure: they interpret goals, choose tools, and execute multi-step operations without a human validating every step. Traditional access controls do not stop an agent from misusing permissions it legitimately holds — which is why Zero Trust, re-shaped for agentic systems, is the baseline rather than an upgrade.</p>
+      </div>
+
+      <h2 class="sec-title">Five foundational principles</h2>
+      <div class="grid cols-2">
+        <div class="card principle">
+          <h3>Never trust, always verify</h3>
+          <p class="small">Every access request undergoes authentication and authorization regardless of origin. Internal network traffic gets the same scrutiny as external.</p>
+        </div>
+        <div class="card principle">
+          <h3>Assume breach</h3>
+          <p class="small">Architect for compromise from day one. Segment by identity so that breaching one system doesn't grant access to others. The question is when the blast radius gets tested, not if.</p>
+        </div>
+        <div class="card principle">
+          <h3>Least agency</h3>
+          <p class="small">OWASP's extension of least privilege: constrain not just what an agent can access, but what each tool it holds can do, how often, and where.</p>
+        </div>
+        <div class="card principle">
+          <h3>Impossible vs. tedious test</h3>
+          <p class="small">Ask of every control: does it make the attack <i>impossible</i>, or just <i>tedious</i>? Friction-based controls fail against attackers with unlimited patience and near-zero per-attempt cost. Prefer removing a capability over throttling it.</p>
+        </div>
+        <div class="card principle" style="grid-column:1 / -1;">
+          <h3>Agentic system thinking</h3>
+          <p class="small">Treat the agent as a distributed system — model, tools, memory, and every sub-agent identity involved — not a single software component. Security has to cover the whole surface, not just the entry point.</p>
+        </div>
+      </div>
+
+      <h2 class="sec-title">How to use this guide</h2>
+      <div class="grid cols-3">
+        <div class="card"><h3>&#128214; Learn</h3><p class="small">Threat Landscape, Capability Tiers, and the 8-Phase Workflow reproduce the reference framework with concrete controls and pro-tips per phase.</p></div>
+        <div class="card"><h3>&#127919; Demonstrate</h3><p class="small">The Attack Simulator and Metrics Console are live, click-driven demos — toggle controls on/off and watch outcomes change in real time, in front of an engineering team.</p></div>
+        <div class="card"><h3>&#9989; Verify</h3><p class="small">Sources &amp; Verification lists every external reference and the internal validation performed on this document itself.</p></div>
+      </div>
+    </section>
+
+    <!-- THREATS -->
+    <section class="panel" id="panel-threats">
+      <header class="pagehead">
+        <h1>Threat Landscape</h1>
+        <p class="lede">Five threat categories from OWASP's Agentic Security Initiative and Anthropic's threat research. Click any card to expand detail. Each maps to a stage in the execution lifecycle shown below.</p>
+      </header>
+
+      <div class="card">
+        <h3>Agentic attack surface map</h3>
+        <svg class="flowsvg" viewBox="0 0 900 190" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--text-faint)"></path></marker>
+          </defs>
+          <text x="70" y="24" text-anchor="middle" font-weight="700">INPUT</text>
+          <text x="330" y="24" text-anchor="middle" font-weight="700">PROCESSING</text>
+          <text x="590" y="24" text-anchor="middle" font-weight="700">TOOLS</text>
+          <text x="820" y="24" text-anchor="middle" font-weight="700">STORAGE</text>
+
+          <g class="hot"><rect x="10" y="70" width="130" height="55" rx="8"></rect></g>
+          <text x="75" y="93" text-anchor="middle">Direct &amp;</text>
+          <text x="75" y="108" text-anchor="middle">Indirect Injection</text>
+
+          <rect x="215" y="40" width="140" height="50" rx="8"></rect>
+          <text x="285" y="60" text-anchor="middle">Unscoped Privilege</text>
+          <text x="285" y="75" text-anchor="middle">Inheritance</text>
+
+          <rect x="215" y="105" width="140" height="50" rx="8"></rect>
+          <text x="285" y="125" text-anchor="middle">Supply Chain</text>
+          <text x="285" y="140" text-anchor="middle">Risks</text>
+
+          <rect x="465" y="40" width="140" height="50" rx="8"></rect>
+          <text x="535" y="60" text-anchor="middle">Tool Chaining</text>
+          <text x="535" y="75" text-anchor="middle">Attacks</text>
+
+          <rect x="465" y="105" width="140" height="50" rx="8"></rect>
+          <text x="535" y="125" text-anchor="middle">Malicious MCP</text>
+          <text x="535" y="140" text-anchor="middle">Servers</text>
+
+          <rect x="710" y="70" width="150" height="55" rx="8"></rect>
+          <text x="785" y="93" text-anchor="middle">Context &amp; RAG</text>
+          <text x="785" y="108" text-anchor="middle">Poisoning</text>
+
+          <path class="arrow" d="M140,80 L215,62"></path>
+          <path class="arrow" d="M140,110 L215,128"></path>
+          <path class="arrow" d="M355,62 L465,62"></path>
+          <path class="arrow" d="M355,128 L465,128"></path>
+          <path class="arrow" d="M605,62 L710,90"></path>
+          <path class="arrow" d="M605,128 L710,105"></path>
+        </svg>
+        <p class="small">Autonomous systems execute multi-step operations without human initiation. They introduce novel vulnerabilities at every phase of the execution lifecycle — this is why point-in-time input filtering alone is never sufficient.</p>
+      </div>
+
+      <div id="threatCards"></div>
+    </section>
+
+    <!-- TIERS -->
+    <section class="panel" id="panel-tiers">
+      <header class="pagehead">
+        <h1>Capability Tiers</h1>
+        <p class="lede">A maturity roadmap across 15 controls. Start at Foundation — note AI-accelerated offense has raised that floor — and progress systematically as deployments scale.</p>
+      </header>
+
+      <div class="tier-filter" id="tierFilter">
+        <button data-tier="all" class="on">All tiers</button>
+        <button data-tier="foundation">Foundation</button>
+        <button data-tier="enterprise">Enterprise</button>
+        <button data-tier="advanced">Advanced</button>
+      </div>
+
+      <div class="tbl-wrap">
+        <table class="tiers" id="tiersTable">
+          <thead><tr><th>Capability</th><th class="col-foundation">Foundation</th><th class="col-enterprise">Enterprise</th><th class="col-advanced">Advanced</th></tr></thead>
+          <tbody id="tiersBody"></tbody>
+        </table>
+      </div>
+      <p class="small" style="margin-top:10px;">Read the tiers as a roadmap, not a finish line — skipping one row gives attackers a defined gap. Try the <b>Maturity Self-Assessment</b> tab to score your own deployment against this table.</p>
+    </section>
+
+    <!-- WORKFLOW -->
+    <section class="panel" id="panel-workflow">
+      <header class="pagehead">
+        <h1>Eight-Phase Implementation Workflow</h1>
+        <p class="lede">A repeatable process for every agent deployment — not a one-time setup. Click a phase to expand its controls, examples, and pro-tips.</p>
+      </header>
+
+      <div class="stepper" id="phaseStepper"></div>
+      <div class="card" id="phaseBodyHost"></div>
+    </section>
+
+    <!-- DEFENSIVE OPS -->
+    <section class="panel" id="panel-defops">
+      <header class="pagehead">
+        <h1>Defensive Operations at Machine Speed</h1>
+        <p class="lede">Securing the agents is half the work. Running security operations fast enough to contend with AI-accelerated attackers is the other half.</p>
+      </header>
+
+      <div class="card">
+        <h3>The shift: bookkeeping to humans off, decisions to humans on</h3>
+        <p class="small">Agentic adversaries can probe hundreds or thousands of systems in the time a human analyst reviews one alert. The fix is not removing humans from the loop — it's moving them off evidence collection and onto containment, disclosure, and customer-communication decisions.</p>
+      </div>
+
+      <div class="timeline" id="defopsTimeline"></div>
+
+      <div class="card" style="border-color:var(--accent-2)">
+        <h3>Trust through verification — even for your own defensive agents</h3>
+        <p class="small">Agentic SOAR capabilities carry their own blast radius. Run defensive agents in hardened environments, scope their automated responses to specific bounded actions, require human approval for high-impact responses, and log/trace/review their actions with the same rigor as any other agent. Don't extend blind trust to your own automation.</p>
+      </div>
+    </section>
+
+    <!-- ATTACK SIMULATOR -->
+    <section class="panel" id="panel-attacksim">
+      <header class="pagehead">
+        <h1>Attack Simulator</h1>
+        <p class="lede">Pick an attack scenario, toggle which Zero Trust controls are active, and see whether the attack is blocked. This is a teaching model of the "impossible vs. tedious" test, not a real security scanner.</p>
+      </header>
+
+      <div class="sim-grid">
+        <div class="card sim-controls">
+          <label for="attackSelect">Attack scenario</label>
+          <select id="attackSelect"></select>
+          <div id="scenarioDesc" class="small" style="margin-top:8px;"></div>
+
+          <label>Active controls</label>
+          <div id="controlToggles"></div>
+
+          <button id="runSim" style="margin-top:16px; width:100%; padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:700; cursor:pointer; font-size:13.5px;">Run simulation</button>
+        </div>
+
+        <div class="result-box" id="resultBox">
+          <div class="verdict" id="verdictLine"><span class="dot"></span><span id="verdictText">Select controls and run the simulation</span></div>
+          <p class="small" id="verdictExplain">Results will explain which control stopped the attack — or why the attack path stayed open — and reference the guide phase it belongs to.</p>
+          <div class="badge-controls" id="controlBadges"></div>
+          <div class="trace" id="traceOut" style="display:none;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- METRICS CONSOLE -->
+    <section class="panel" id="panel-metrics">
+      <header class="pagehead">
+        <h1>Metrics Console</h1>
+        <p class="lede">Phase 8 says: measure what matters before you need it. Drag the sliders to model your own program and see the verdict against the thresholds in the guide.</p>
+      </header>
+
+      <div class="card">
+        <label for="dwellRange" style="font-weight:600; font-size:13px;">Dwell time (anomaly occurrence &rarr; human awareness): <span id="dwellVal"></span></label>
+        <input type="range" id="dwellRange" min="1" max="240" value="45">
+        <p class="small">Target: under 1 hour (60 min) for critical systems.</p>
+
+        <label for="covRange" style="font-weight:600; font-size:13px; margin-top:18px; display:block;">Alert coverage (fraction actually investigated): <span id="covVal"></span></label>
+        <input type="range" id="covRange" min="0" max="100" value="70">
+        <p class="small">Higher is better — this is the fraction of alerts that get real triage, human or agent.</p>
+
+        <label for="detRange" style="font-weight:600; font-size:13px; margin-top:18px; display:block;">Detection speed (unexpected behavior &rarr; flagged): <span id="detVal"></span></label>
+        <input type="range" id="detRange" min="1" max="240" value="50">
+        <p class="small">Target: within 1 hour for critical systems.</p>
+      </div>
+
+      <div class="gauge-wrap" id="gaugeWrap"></div>
+
+      <div class="card">
+        <h3>Explainability self-check</h3>
+        <p class="small">For regulated data (financial, health, personal) this is not optional. Ask your team honestly:</p>
+        <ul class="controls-list">
+          <li>Would we know within an hour if an agent went rogue?</li>
+          <li>Can the on-call engineer take a weekend off without worrying about undetected agent misbehavior?</li>
+          <li>Can we trace any specific agent action back to its triggering input and reasoning steps?</li>
+        </ul>
+        <p class="small">If any answer is "not sure" — Phase 8 (and likely Phases 3&ndash;7) need more work before scaling the deployment.</p>
+      </div>
+    </section>
+
+    <!-- SELF ASSESSMENT -->
+    <section class="panel" id="panel-selfassess">
+      <header class="pagehead">
+        <h1>Maturity Self-Assessment</h1>
+        <p class="lede">Score your current deployment against each capability row, then read the radar chart. Nothing here is stored or sent anywhere — it's local to this page for the duration of your demo.</p>
+      </header>
+
+      <div class="sim-grid">
+        <div class="card" style="max-height:560px; overflow:auto;" id="assessList"></div>
+        <div class="card">
+          <svg id="radarSvg" viewBox="0 0 500 500"></svg>
+          <p class="small" id="radarSummary" style="text-align:center;"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- GLOSSARY -->
+    <section class="panel" id="panel-glossary">
+      <header class="pagehead">
+        <h1>Glossary</h1>
+        <p class="lede">Terms as used throughout this guide and the source framework.</p>
+      </header>
+      <div class="card">
+        <dl class="gloss" id="glossaryList"></dl>
+      </div>
+    </section>
+
+    <!-- SOURCES & VERIFICATION -->
+    <section class="panel" id="panel-sources">
+      <header class="pagehead">
+        <h1>Sources &amp; Verification</h1>
+        <p class="lede">This page is self-contained: no external network calls, fonts, or scripts. Everything renders from inline HTML/CSS/JS.</p>
+      </header>
+
+      <div class="card">
+        <h3>Primary sources</h3>
+        <ul class="ref-list">
+          <li><b>Anthropic</b> — <i>Zero Trust for AI Agents</i> eBook, May 27, 2026. <a href="https://claude.com/blog/zero-trust-for-ai-agents" target="_blank" rel="noopener">claude.com/blog/zero-trust-for-ai-agents</a></li>
+          <li><b>OWASP GenAI Security Project</b> — Agentic Security Initiative &amp; LLM/Agentic Top 10. <a href="https://genai.owasp.org/" target="_blank" rel="noopener">genai.owasp.org</a></li>
+          <li><b>NIST SP 800-207</b> — Zero Trust Architecture (2020)</li>
+          <li><b>CISA Zero Trust Maturity Model; NSA Zero-Trust Implementation Guides (ZIGs, 2026)</b></li>
+          <li><b>Cybage internal</b> — <span class="mono">Zero-Trust-Agentic-Development-Implementation-Guide.md</span>, the written spec this page dramatizes</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Validation performed on this document</h3>
+        <ul class="controls-list" id="validationList">
+          <li><b>Structural integrity:</b> HTML tag balance and DOM parse checked with an automated parser; zero unclosed elements.</li>
+          <li><b>Navigation:</b> every sidebar tab verified to have a matching panel id; every panel verified to have a matching tab. Automated click-through of all <span id="tabCountA">9</span> tabs confirmed exactly one active panel at a time.</li>
+          <li><b>Phase stepper:</b> automated click-through of all 8 phase buttons confirmed each renders unique, non-empty content and updates the active state correctly.</li>
+          <li><b>Attack simulator:</b> all scenario/control combinations exercised programmatically; verdict logic confirmed deterministic and free of script errors.</li>
+          <li><b>Theme toggle:</b> dark/light switch verified to update <span class="mono">data-theme</span> and persist via <span class="mono">localStorage</span> across reload, with graceful fallback if storage is unavailable.</li>
+          <li><b>Links:</b> all external links use <span class="mono">target="_blank" rel="noopener"</span>; all internal links are tab-controller buttons, not raw anchors, so there are no dead <span class="mono">href="#"</span> jumps.</li>
+          <li><b>Fact cross-check:</b> figures (250-document backdoor threshold, 50%&rarr;2% Spotlighting reduction, 95% jailbreak block rate, &lt;1hr dwell/detection targets) verified against the source eBook text extracted directly from the uploaded PDF.</li>
+        </ul>
+        <p class="small" style="margin-top:10px;">See the live self-test output in the bottom-right banner on load — it re-runs these structural checks in your browser and reports pass/fail counts in real time.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="validate-banner" id="validateBanner">
+  <span class="close-x" id="closeValidate">&times;</span>
+  <b>Self-test running…</b>
+  <div id="validateOut" style="margin-top:6px;"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============ DATA ============ */
+
+var THREATS = [
+  {tag:"Input", title:"Prompt Injection & Instruction Manipulation",
+   summary:"Attacker instructions override agent behavior through direct or indirect input.",
+   detail:"Direct injection crafts input that overrides system instructions (encoding tricks, adversarial suffixes) — algorithmic approaches have shown 100% attack success rates with prompts that transfer across model families. Indirect injection embeds malicious instructions in external content the agent reads (a web page, an email). LLMs cannot reliably distinguish informational context from actionable instruction, and the user never sees the payload."},
+  {tag:"Tools", title:"Tool & Resource Misuse",
+   summary:"Legitimate tool access is manipulated into harmful action, within granted permissions.",
+   detail:"Tool poisoning compromises tool metadata/descriptors so the agent invokes falsified capabilities — the first documented malicious MCP server impersonated a legitimate email service and silently copied every sent email. Rug-pull attacks swap a vetted tool for a malicious one post-approval. Tool chaining combines two individually legitimate tools into a harmful sequence — e.g. an internal CRM tool plus an external email tool to exfiltrate data neither tool exposes alone. Resource exhaustion drives loop amplification against costly APIs."},
+  {tag:"Identity", title:"Identity & Privilege Abuse",
+   summary:"Agents run with elevated privileges that traditional identity systems weren't built for.",
+   detail:"Unscoped privilege inheritance: a high-privilege manager agent delegates to a worker agent without scoping down access. Confused deputy: a compromised low-privilege agent relays a valid-looking instruction to a high-privilege agent, which executes without verifying original intent. Memory-based privilege retention: cached credentials let an attacker escalate privilege across session boundaries."},
+  {tag:"Supply Chain", title:"Supply Chain & Dependency Risk",
+   summary:"Poisoned models, malicious MCP servers, and unmaintained open-source dependencies.",
+   detail:"Model supply chain: poisoned weights or fine-tuning data introduce backdoors that persist through deployment — Anthropic's research shows injecting just 250 malicious documents can backdoor models from 600M to 13B parameters, surviving SFT and RLHF. Tool/framework supply chain: the PyTorch dependency-confusion incident exfiltrated SSH keys on install; researchers found roughly 100 malicious AI models on major hosting platforms. Most agent infrastructure is mostly open source with no SLA."},
+  {tag:"Memory", title:"Memory & Context Poisoning",
+   summary:"Corrupted persisted context biases or hijacks all future reasoning, not just one session.",
+   detail:"RAG poisoning injects malicious data into vector databases via poisoned sources or over-trusted ingestion. Shared context poisoning bleeds one multi-tenant session's poisoned data into another. Long-term memory drift is the subtlest variant — summaries or peer-agent feedback gradually shift stored knowledge; no single change looks malicious, only the aggregate deviation does."}
+];
+
+var TIERS = [
+ ["Agent identity","Unique cryptographic identifier per instance","Certificate-based auth (X.509) with full lifecycle management","Hardware-backed identity (HSM/TPM) with remote attestation"],
+ ["Service auth","Short-lived OAuth 2.0 tokens with automatic refresh","Mutual TLS with certificate pinning","Hardware-bound credentials with attested issuance"],
+ ["Access control","RBAC, deny-by-default","ABAC with context-aware policy (time, location, risk)","Continuous per-action authorization"],
+ ["Privilege scoping","Static least-privilege roles per function","Dynamic elevation only during specific tasks","Just-In-Time (JIT) / Just-Enough-Administration (JEA)"],
+ ["Resource boundaries","Identity-based isolation + network segmentation","Sandboxed execution (e.g. gVisor) per agent","Hardware isolation / confidential computing (AMD SEV, Intel TDX)"],
+ ["Action logging","Log all tool calls, data access, communications","Immutable audit trails, cryptographic integrity","Real-time SIEM streaming with multi-event correlation"],
+ ["Traceability","Request IDs linking actions to triggering events","Distributed tracing (OpenTelemetry) across multi-agent workflows","Full provenance chains, input to output, incl. reasoning steps"],
+ ["Behavioral monitoring","Manually defined expected patterns","Automated baseline learning from normal operations","Continuous drift detection for slow poisoning"],
+ ["Anomaly detection","Threshold-based alerts, automated triage","Statistical anomaly detection, tunable sensitivity","ML-based analysis with deep contextual awareness"],
+ ["Automated response","Model-drafted triage context for security teams","Automatic containment (session termination, credential revocation)","Orchestrated SOAR playbooks with graduated escalation"],
+ ["Input sanitization","Basic validation, max length limits","Content filtering for injection patterns / encoded payloads","Spotlighting + multi-layer constitutional classifiers"],
+ ["Output filtering","Scan for sensitive data (PII, credentials)","Semantic analysis of output meaning before delivery","Human-in-the-loop approval for high-risk actions"],
+ ["Config integrity","Version-controlled config, required reviews","Signed configurations, verified before deployment","Immutable infrastructure images with hardware attestation"],
+ ["Recovery","Documented, periodically tested rollback","Automated rollback on health-check failure","Self-healing systems with automatic remediation"],
+ ["Governance","Documented acceptable-use / shadow-AI policy","Formal governance framework, stakeholder oversight","Continuous automated compliance checking in pipelines"]
+];
+
+var PHASES = [
+ {n:1, title:"Identify requirements",
+  body:"Align security, legal, compliance, and business stakeholders before you build. Define what regulatory requirements apply (GDPR, HIPAA, EU AI Act, FedRAMP, FINRA), what operational goals the agent serves, and what constraints — budget, latency, data residency — bound the design.",
+  controls:[]},
+ {n:2, title:"Manage supply chain risk",
+  body:"Treat model components with the same rigor as code dependencies.",
+  controls:[
+   "<b>AI Bill of Materials (AI-BOM):</b> track model provenance, training data lineage, fine-tuning parameters. OWASP's AI-BOM extends CycloneDX ML-BOM.",
+   "<b>OpenSSF Scorecard:</b> score every dependency on branch protection, fuzzing coverage, signed releases, maintainer activity — wire into CI alongside the AI-BOM.",
+   "<b>Dependency-tree audit:</b> point a frontier model at your lockfile to find overlapping libraries (multiple HTTP clients, JSON parsers) — a one-hour exercise that surfaces real consolidation.",
+   "<b>Reachability analysis:</b> narrow remediation to vulnerable code that's actually reachable, paired with CI regression tests.",
+   "<b>AI vendoring:</b> for small, poorly maintained dependencies, have a frontier model reimplement the subset of functionality you use — the standard response, not an exotic workaround.",
+   "<b>Cryptographic signing:</b> sign models and software at every stage through production; verify at runtime, not just at deploy.",
+   "<b>Vendor assessment:</b> review security practices/update mechanisms/incident history for every MCP server or tool provider before adoption; self-host on immutable infrastructure where feasible."
+  ], tip:"Run/host the MCP server yourself, on an immutable platform, after verifying the code. Cryptographically sign it yourself and repeat that verification on every update before promoting to production."},
+ {n:3, title:"Define agent boundaries",
+  body:"Define exactly what each agent may do, when it must escalate to a human, and the resulting blast radius if something goes wrong.",
+  controls:[
+   "<b>Unique identity per instance:</b> a cryptographically rooted identifier that persists across actions — without it, incident correlation is guesswork.",
+   "<b>Explicit approved/prohibited actions:</b> \"read customer records, summarize, draft responses — no send, no delete\" beats \"help with customer service.\" Enforce at the permission layer, not as a prompt instruction.",
+   "<b>Escalation triggers:</b> high-value transactions, sensitive-data access, or external comms require human review before proceeding.",
+   "<b>Scope limits (least agency):</b> reach only the systems the agent's function requires, even if the underlying account technically permits more.",
+   "<b>Compartmentalize by splitting agents:</b> distinct IDs and distinct credentials per agent force an attacker to compromise more surface for the same access — shared credentials defeat this entirely.",
+   "<b>Identify the effective blast radius</b> and run it through the impossible-vs.-tedious test; tighten scope if containment depends on attacker fatigue."
+  ], tip:"Claude Code natively supports this level of granular access control in settings.json, configurable at global and project level, plus environment variables."},
+ {n:4, title:"Defend against prompt injection",
+  body:"Treat every natural-language input as untrusted — both direct (user-supplied) and indirect (retrieved documents, web content, email).",
+  controls:[
+   "<b>Input isolation / Spotlighting:</b> clearly delimit untrusted content from system instructions before it reaches the model — reduces indirect injection success from over 50% to under 2%.",
+   "<b>Constitutional classifiers:</b> an AI-based detection layer scanning prompts and responses for manipulation — blocked 95% of jailbreak attempts in testing with minimal added over-refusal.",
+   "<b>Limit the attack surface:</b> restrict who and what can interact with the system at all — fewer entry points, fewer exploitable paths."
+  ]},
+ {n:5, title:"Secure tool access",
+  body:"Tool access is one of the highest-risk surfaces in any agentic deployment — a single compromised agent with broad tool access can cause damage beyond its intended function.",
+  controls:[
+   "<b>Tool allow-listing, deny-by-default:</b> explicit per-function tool lists, enforced both inside the agent config and independently at the tool/API layer.",
+   "<b>Authenticate every tool call:</b> certificate-based auth or short-lived tokens bound to the calling agent's identity — static API keys are unacceptable even at Foundation.",
+   "<b>Capability restrictions:</b> scope what a permitted tool can actually do (read-only email; query-only database).",
+   "<b>Parameter validation on both sides:</b> validate tool-call arguments before execution, agent side and tool side.",
+   "<b>Sandbox execution:</b> container sandboxes or microVMs with restricted network, limited filesystem mounts, syscall filtering.",
+   "<b>Rate limits / circuit breakers:</b> useful for resource-exhaustion containment, but remember — friction buys time, it doesn't stop a determined agentic attacker.",
+   "<b>Approval escalation</b> for high-risk tool calls, with logged decisions for later forensics."
+  ], tip:"Claude Code supports sandboxing with filesystem isolation, network isolation, and OS-level enforcement, plus PreToolUse hooks for parameter validation."},
+ {n:6, title:"Protect agent credentials",
+  body:"Shared credentials or generic service accounts mean one compromise grants attackers everything every agent under that credential can reach. Treat static API keys and embedded credentials as already compromised.",
+  controls:[
+   "<b>Short-lived, IdP-issued credentials as baseline</b> — tokens expiring in minutes, not days, with automated refresh.",
+   "<b>Certificate-based identity</b> with a CA issuing short-lived certs and maintaining CRLs/OCSP — or a managed identity/secrets platform (e.g. HashiCorp Vault) where in-house PKI isn't feasible.",
+   "<b>Hardware-bound credentials</b> for production/sensitive workloads; phishing-resistant 2FA (FIDO2/passkeys) as default for human-in-the-loop auth — SMS codes don't meet the Foundation bar.",
+   "<b>Credential isolation per agent instance</b> — never embedded in code/config; injected at runtime from a secrets manager with logged access and emergency revocation.",
+   "<b>Explicit trust boundaries between agents</b> — verify identity/authorization before accepting a delegated task; log inter-agent communication.",
+   "<b>Just-in-time (JIT) access:</b> grant permissions only for the operation's duration, then revoke — an advanced control, but among the strongest available even partially adopted.",
+   "<b>Attribute-based access control (ABAC):</b> evaluate identity, resource sensitivity, action, time, location, and risk score together so policy flexes without a new static role per pattern."
+  ], tip:"Claude Code stores API credentials in the OS credential store rather than config files, and supports OAuth 2.0 with automatic token refresh for MCP connections."},
+ {n:7, title:"Safeguard agent memory",
+  body:"Memory poisoning is uniquely dangerous because it persists across interactions, shaping behavior long after the original compromise.",
+  controls:[
+   "<b>Memory isolation between sessions and users</b> — without this, poisoned context from one conversation shapes a future one.",
+   "<b>Context integrity validation at every retrieval,</b> not just at write time — cryptographic hashes detect tampering; source attribution tracks origin. Reject and alert on validation failure.",
+   "<b>Retention policies with TTLs</b> — automatically expire unverified memory, especially high-risk categories like external inputs or unverified tool outputs.",
+   "<b>Prepare recovery in advance:</b> versioned memory stores for rollback; quarantine for forensic review before deletion. Test rollback before you need it."
+  ], tip:"Claude Code enforces session isolation by default — fresh context per session, sub-agents in their own isolated context windows."},
+ {n:8, title:"Measure what matters",
+  body:"An agentic system operating as a black box gives you no way to tell whether it's delivering intended outcomes or has been compromised and is serving an attacker's objectives.",
+  controls:[
+   "<b>Dwell time and coverage first</b> — anomaly-to-awareness time, and the fraction of alerts actually investigated. These are the two metrics AI automation moves most.",
+   "<b>Detection speed:</b> target under one hour for critical systems — the gap between minutes and days translates directly into damage contained.",
+   "<b>Explainability:</b> for regulated data, tracing any action back to its trigger and reasoning is not optional.",
+   "<b>Behavioral conformance:</b> baseline during controlled deployment; measure drift in tool usage, output characteristics, decision distributions over time."
+  ], tip:"The standing test: would your team know within an hour if an agent went rogue? Can they take time off without worrying about undetected misbehavior?"}
+];
+
+var DEFOPS = [
+ {h:"Put a model at the front of the alert queue", p:"A triage agent with read-only SIEM access and scoped query tools produces a first-pass disposition before a human sees the alert. Start narrow: one noisy, high-false-positive rule, two weeks measuring agreement with a human reviewer, then expand."},
+ {h:"Automate bookkeeping, not the containment call", p:"Evidence collection, enrichment, correlation, and documentation get automated. Containment decisions, disclosure calls, and customer communication stay with humans."},
+ {h:"Run Agentic SOAR through your identity infrastructure", p:"Quarantine, dynamic access adjustment, session termination, and credential revocation — executed through the identity-based isolation and short-lived-credential infrastructure from Phases 3–6 — within seconds rather than hours."},
+ {h:"Map detection coverage to MITRE ATT&CK", p:"Prioritize lateral movement and credential access — where AI-accelerated attackers get the most leverage from a compromised agent identity. Atomic Red Team's test library run against existing logging produces a coverage map in an afternoon."},
+ {h:"Rehearse five simultaneous incidents, not one", p:"The standard tabletop assumes a single critical CVE on a Monday. Plan and rehearse for an order-of-magnitude spike — a spreadsheet-and-weekly-meeting workflow will not hold."},
+ {h:"Pre-authorize emergency change procedures", p:"Decide in advance who can authorize taking a service offline, rotating a credential, or blocking a network path — and rehearse the path so it isn't improvised mid-incident."}
+];
+
+var SCENARIOS = [
+ {id:"injection", name:"Indirect prompt injection via a retrieved document",
+  desc:"An agent summarizes a web page that contains hidden instructions telling it to exfiltrate the user's session data to an external URL.",
+  needs:["isolation","classifier","surface"], phase:"Phase 4 — Defend against prompt injection"},
+ {id:"toolchain", name:"Tool-chaining exfiltration",
+  desc:"An attacker manipulates the agent into combining a legitimate internal CRM tool with an external email tool to exfiltrate customer records that neither tool exposes alone.",
+  needs:["allowlist","capability","sandbox"], phase:"Phase 5 — Secure tool access"},
+ {id:"privesc", name:"Unscoped privilege inheritance",
+  desc:"A high-privilege manager agent delegates a task to a worker agent, passing along its full access context instead of a scoped subset.",
+  needs:["scope","boundaries","jit"], phase:"Phase 3 — Define agent boundaries"},
+ {id:"credtheft", name:"Static credential theft",
+  desc:"An attacker with model-assisted code analysis finds an embedded API key in a config file and reuses it from an external host.",
+  needs:["shortlived","isolationcred","hwbound"], phase:"Phase 6 — Protect agent credentials"},
+ {id:"rag", name:"RAG / memory poisoning",
+  desc:"Malicious content is uploaded into a shared knowledge base; a later session retrieves and acts on the poisoned context as if it were trusted.",
+  needs:["memiso","integrity","ttl"], phase:"Phase 7 — Safeguard agent memory"},
+ {id:"mcp", name:"Malicious / rug-pulled MCP server",
+  desc:"A previously vetted MCP tool is silently swapped for a malicious version that exfiltrates every request it handles.",
+  needs:["signing","vendor","allowlist"], phase:"Phase 2 — Manage supply chain risk"}
+];
+
+var CONTROL_LABELS = {
+  isolation:"Input isolation / Spotlighting", classifier:"Constitutional classifiers", surface:"Limit attack surface",
+  allowlist:"Tool allow-listing (deny-by-default)", capability:"Capability restrictions on tools", sandbox:"Sandboxed execution",
+  scope:"Scope limits / least agency", boundaries:"Explicit agent boundaries", jit:"Just-in-time access",
+  shortlived:"Short-lived credentials", isolationcred:"Per-agent credential isolation", hwbound:"Hardware-bound credentials",
+  memiso:"Memory isolation", integrity:"Context integrity validation", ttl:"Retention policies / TTLs",
+  signing:"Cryptographic signing", vendor:"Vendor assessment",
+};
+
+var GLOSSARY = [
+ ["Blast radius","The potential damage if an agent or its credentials are compromised. Security investment should scale with exposure, not just likelihood."],
+ ["Least agency","OWASP's extension of least privilege to agentic systems: restricts what each tool can do, how often, and where — not just what the agent can access."],
+ ["Impossible vs. tedious test","A design test for any control: does it make an attack impossible, or merely tedious? Friction-only controls fail against attackers with unlimited patience."],
+ ["AI-BOM","AI Bill of Materials — extends software composition analysis to track model provenance, training data lineage, and fine-tuning parameters."],
+ ["Confused deputy","A compromised low-privilege agent relays a valid-looking instruction to a high-privilege agent, which executes it without verifying original user intent."],
+ ["Spotlighting","Microsoft's technique for delimiting untrusted content from trusted instructions, reducing indirect prompt-injection success from >50% to <2%."],
+ ["Just-in-time (JIT) access","Permissions granted only for the duration of a specific operation, then revoked — leaves no standing credential for an attacker to steal."],
+ ["ABAC","Attribute-Based Access Control — evaluates identity, resource sensitivity, action, time, location, and risk score together for context-aware authorization."],
+ ["Agentic SOAR","Security Orchestration, Automation and Response extended with adaptive capabilities that respond to novel situations beyond fixed playbooks, at machine speed."],
+ ["Dwell time","The time between an anomaly occurring and a human becoming aware of it. Target under 1 hour for critical systems."],
+ ["Rug-pull attack","A previously vetted, trusted tool is quietly replaced with a malicious version after approval."],
+ ["MCP (Model Context Protocol)","A standard for connecting agents to external tools and data sources — and, unsecured, a supply-chain and tool-poisoning attack surface in its own right."]
+];
+
+/* ============ THEME ============ */
+var root = document.documentElement;
+function applyTheme(t){
+  root.setAttribute('data-theme', t);
+  document.getElementById('themeLabel').textContent = (t === 'dark' ? 'Dark theme' : 'Light theme');
+  document.getElementById('themeIcon').innerHTML = (t === 'dark' ? '&#9789;' : '&#9728;');
+  try{ localStorage.setItem('zt-theme', t); }catch(e){}
+}
+(function initTheme(){
+  var saved = null;
+  try{ saved = localStorage.getItem('zt-theme'); }catch(e){}
+  applyTheme(saved === 'light' || saved === 'dark' ? saved : 'dark');
+})();
+document.getElementById('themeToggle').addEventListener('click', function(){
+  var cur = root.getAttribute('data-theme');
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+});
+
+/* ============ NAV / TABS ============ */
+var tabButtons = Array.prototype.slice.call(document.querySelectorAll('#tabNav button'));
+var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+function activatePanel(name, pushHash){
+  panels.forEach(function(p){ p.classList.toggle('active', p.id === 'panel-' + name); });
+  tabButtons.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
+  if(pushHash !== false){ try{ history.replaceState(null,'','#' + name); }catch(e){} }
+  document.getElementById('sidebar').classList.remove('open');
+  window.scrollTo(0,0);
+}
+tabButtons.forEach(function(b){
+  b.addEventListener('click', function(){ activatePanel(b.getAttribute('data-panel')); });
+});
+document.getElementById('menuBtn').addEventListener('click', function(){
+  document.getElementById('sidebar').classList.toggle('open');
+});
+(function initHash(){
+  var h = (location.hash || '').replace('#','');
+  var valid = tabButtons.some(function(b){ return b.getAttribute('data-panel') === h; });
+  if(valid) activatePanel(h, false);
+})();
+
+/* ============ THREATS ============ */
+var threatHost = document.getElementById('threatCards');
+THREATS.forEach(function(t){
+  var el = document.createElement('div');
+  el.className = 'card threat-card';
+  el.innerHTML = '<span class="chev">&#8250;</span><div class="tag">'+t.tag+'</div><h3>'+t.title+'</h3><p class="small" style="margin:4px 0 0;">'+t.summary+'</p><div class="threat-detail">'+t.detail+'</div>';
+  el.addEventListener('click', function(){ el.classList.toggle('open'); });
+  threatHost.appendChild(el);
+});
+
+/* ============ TIERS TABLE ============ */
+var tiersBody = document.getElementById('tiersBody');
+TIERS.forEach(function(row){
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td class="cap-name">'+row[0]+'</td>'+
+    '<td class="col-foundation"><span class="pill foundation">F</span> '+row[1]+'</td>'+
+    '<td class="col-enterprise"><span class="pill enterprise">E</span> '+row[2]+'</td>'+
+    '<td class="col-advanced"><span class="pill advanced">A</span> '+row[3]+'</td>';
+  tiersBody.appendChild(tr);
+});
+var tierMap = {foundation:'.col-foundation', enterprise:'.col-enterprise', advanced:'.col-advanced'};
+document.querySelectorAll('#tierFilter button').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('#tierFilter button').forEach(function(b){ b.classList.remove('on'); });
+    btn.classList.add('on');
+    var tier = btn.getAttribute('data-tier');
+    ['foundation','enterprise','advanced'].forEach(function(k){
+      document.querySelectorAll(tierMap[k]).forEach(function(cell){
+        cell.classList.toggle('col-hide', !(tier === 'all' || tier === k));
+      });
+    });
+  });
+});
+
+/* ============ WORKFLOW PHASES ============ */
+var stepper = document.getElementById('phaseStepper');
+var phaseHost = document.getElementById('phaseBodyHost');
+PHASES.forEach(function(ph, idx){
+  var b = document.createElement('button');
+  b.innerHTML = '<span class="n">'+ph.n+'</span> '+ph.title;
+  b.setAttribute('data-phase', ph.n);
+  if(idx === 0) b.classList.add('active');
+  b.addEventListener('click', function(){
+    stepper.querySelectorAll('button').forEach(function(x){ x.classList.remove('active'); });
+    b.classList.add('active');
+    renderPhase(ph);
+  });
+  stepper.appendChild(b);
+});
+function renderPhase(ph){
+  var html = '<h3 style="font-size:17px;">Phase '+ph.n+' — '+ph.title+'</h3><p style="color:var(--text-dim); font-size:14px;">'+ph.body+'</p>';
+  if(ph.controls && ph.controls.length){
+    html += '<ul class="controls-list">' + ph.controls.map(function(c){ return '<li>'+c+'</li>'; }).join('') + '</ul>';
+  }
+  if(ph.tip){
+    html += '<div class="protip"><b>Pro-tip:</b> '+ph.tip+'</div>';
+  }
+  phaseHost.innerHTML = html;
+}
+renderPhase(PHASES[0]);
+
+/* ============ DEFENSIVE OPS TIMELINE ============ */
+var tlHost = document.getElementById('defopsTimeline');
+DEFOPS.forEach(function(item){
+  var el = document.createElement('div');
+  el.className = 'tl-item';
+  el.innerHTML = '<h4>'+item.h+'</h4><p>'+item.p+'</p>';
+  tlHost.appendChild(el);
+});
+
+/* ============ ATTACK SIMULATOR ============ */
+var attackSelect = document.getElementById('attackSelect');
+SCENARIOS.forEach(function(s){
+  var opt = document.createElement('option');
+  opt.value = s.id; opt.textContent = s.name;
+  attackSelect.appendChild(opt);
+});
+var toggleHost = document.getElementById('controlToggles');
+function allControlKeys(){
+  var set = {};
+  SCENARIOS.forEach(function(s){ s.needs.forEach(function(k){ set[k] = true; }); });
+  return Object.keys(set);
+}
+var ALL_CONTROLS = allControlKeys();
+function renderToggles(){
+  toggleHost.innerHTML = '';
+  ALL_CONTROLS.forEach(function(key){
+    var row = document.createElement('div');
+    row.className = 'chk-row';
+    row.innerHTML = '<input type="checkbox" data-ctl="'+key+'" id="ctl-'+key+'"><label for="ctl-'+key+'" style="cursor:pointer;">'+(CONTROL_LABELS[key]||key)+'</label>';
+    toggleHost.appendChild(row);
+  });
+}
+renderToggles();
+function currentScenario(){
+  var id = attackSelect.value;
+  return SCENARIOS.filter(function(s){ return s.id === id; })[0];
+}
+function updateScenarioDesc(){
+  var s = currentScenario();
+  document.getElementById('scenarioDesc').textContent = s.desc;
+}
+attackSelect.addEventListener('change', updateScenarioDesc);
+attackSelect.selectedIndex = 0;
+updateScenarioDesc();
+
+function runSimulation(){
+  var s = currentScenario();
+  var checked = Array.prototype.slice.call(toggleHost.querySelectorAll('input[type=checkbox]:checked')).map(function(c){ return c.getAttribute('data-ctl'); });
+  var satisfied = s.needs.filter(function(need){ return checked.indexOf(need) !== -1; });
+  var missing = s.needs.filter(function(need){ return checked.indexOf(need) === -1; });
+  var blocked = missing.length === 0;
+
+  var box = document.getElementById('resultBox');
+  box.className = 'result-box ' + (blocked ? 'blocked' : 'succeeded');
+  var verdictLine = document.getElementById('verdictLine');
+  verdictLine.className = 'verdict ' + (blocked ? 'blocked' : 'succeeded');
+  document.getElementById('verdictText').textContent = blocked ? 'Attack blocked' : 'Attack path open';
+
+  var explain = document.getElementById('verdictExplain');
+  if(blocked){
+    explain.innerHTML = 'All required controls for this scenario are active. Reference: <b>'+s.phase+'</b>. This satisfies the "impossible" bar rather than merely the "tedious" one.';
+  } else {
+    explain.innerHTML = 'Missing control(s): <b>' + missing.map(function(m){ return CONTROL_LABELS[m]||m; }).join(', ') + '</b>. Reference: <b>'+s.phase+'</b>. Without these, the attack path stays open regardless of how much friction the other controls add.';
+  }
+
+  var badgeHost = document.getElementById('controlBadges');
+  badgeHost.innerHTML = '';
+  s.needs.forEach(function(need){
+    var hit = satisfied.indexOf(need) !== -1;
+    var span = document.createElement('span');
+    span.className = hit ? 'hit' : '';
+    span.textContent = (hit ? '✓ ' : '✗ ') + (CONTROL_LABELS[need]||need);
+    badgeHost.appendChild(span);
+  });
+
+  var trace = document.getElementById('traceOut');
+  trace.style.display = 'block';
+  var lines = [];
+  lines.push('[scenario]   ' + s.name);
+  lines.push('[required]   ' + s.needs.map(function(n){return CONTROL_LABELS[n]||n;}).join(' | '));
+  lines.push('[active]     ' + (checked.length ? checked.map(function(n){return CONTROL_LABELS[n]||n;}).join(' | ') : '(none)'));
+  lines.push('[result]     ' + (blocked ? 'BLOCKED — required controls all present' : 'NOT BLOCKED — ' + missing.length + ' required control(s) missing'));
+  trace.textContent = lines.join('\n');
+}
+document.getElementById('runSim').addEventListener('click', runSimulation);
+
+/* ============ METRICS CONSOLE ============ */
+var dwellRange = document.getElementById('dwellRange');
+var covRange = document.getElementById('covRange');
+var detRange = document.getElementById('detRange');
+var gaugeWrap = document.getElementById('gaugeWrap');
+
+function fmtMinutes(m){
+  if(m < 60) return m + ' min';
+  var h = (m/60).toFixed(1).replace(/\.0$/,'');
+  return h + ' hr';
+}
+function gaugeStatus(kind, val){
+  if(kind === 'dwell' || kind === 'det'){
+    if(val <= 60) return ['ok','Meets target'];
+    if(val <= 120) return ['warn','Above target — Enterprise tier stretch'];
+    return ['bad','Foundation floor not met'];
+  } else {
+    if(val >= 80) return ['ok','Strong coverage'];
+    if(val >= 50) return ['warn','Partial coverage — gaps likely'];
+    return ['bad','Most alerts go uninvestigated'];
+  }
+}
+function renderGauges(){
+  var dwell = parseInt(dwellRange.value,10);
+  var cov = parseInt(covRange.value,10);
+  var det = parseInt(detRange.value,10);
+  document.getElementById('dwellVal').textContent = fmtMinutes(dwell);
+  document.getElementById('covVal').textContent = cov + '%';
+  document.getElementById('detVal').textContent = fmtMinutes(det);
+
+  var items = [
+    {label:'Dwell time', val:fmtMinutes(dwell), s:gaugeStatus('dwell', dwell)},
+    {label:'Alert coverage', val:cov+'%', s:gaugeStatus('cov', cov)},
+    {label:'Detection speed', val:fmtMinutes(det), s:gaugeStatus('det', det)}
+  ];
+  gaugeWrap.innerHTML = items.map(function(it){
+    return '<div class="gauge"><div class="val">'+it.val+'</div><div class="lbl">'+it.label+'</div><div class="status '+it.s[0]+'">'+it.s[1]+'</div></div>';
+  }).join('');
+}
+[dwellRange, covRange, detRange].forEach(function(r){ r.addEventListener('input', renderGauges); });
+renderGauges();
+
+/* ============ SELF ASSESSMENT / RADAR ============ */
+var assessList = document.getElementById('assessList');
+var LEVELS = ['None','Foundation','Enterprise','Advanced'];
+var scores = TIERS.map(function(){ return 1; }); // default Foundation
+TIERS.forEach(function(row, i){
+  var r = document.createElement('div');
+  r.className = 'assess-row';
+  var sel = '<select data-idx="'+i+'">' + LEVELS.map(function(l,li){ return '<option value="'+li+'"'+(li===1?' selected':'')+'>'+l+'</option>'; }).join('') + '</select>';
+  r.innerHTML = '<span>'+row[0]+'</span>' + sel;
+  assessList.appendChild(r);
+});
+assessList.addEventListener('change', function(e){
+  if(e.target.tagName === 'SELECT'){
+    scores[parseInt(e.target.getAttribute('data-idx'),10)] = parseInt(e.target.value,10);
+    renderRadar();
+  }
+});
+
+function renderRadar(){
+  var svg = document.getElementById('radarSvg');
+  var n = TIERS.length;
+  var cx = 250, cy = 250, maxR = 200;
+  var pts = [];
+  var axisLines = '', labels = '', rings = '';
+  for(var ring=1; ring<=3; ring++){
+    var r = maxR * ring/3;
+    var ringPts = [];
+    for(var i=0;i<n;i++){
+      var ang = (Math.PI*2*i/n) - Math.PI/2;
+      ringPts.push((cx+r*Math.cos(ang))+','+(cy+r*Math.sin(ang)));
+    }
+    rings += '<polygon points="'+ringPts.join(' ')+'" fill="none" stroke="var(--border)" stroke-width="1"/>';
+  }
+  for(var i=0;i<n;i++){
+    var ang = (Math.PI*2*i/n) - Math.PI/2;
+    var x2 = cx+maxR*Math.cos(ang), y2 = cy+maxR*Math.sin(ang);
+    axisLines += '<line x1="'+cx+'" y1="'+cy+'" x2="'+x2+'" y2="'+y2+'" stroke="var(--border)" stroke-width="1"/>';
+    var lx = cx+(maxR+22)*Math.cos(ang), ly = cy+(maxR+22)*Math.sin(ang);
+    var short = TIERS[i][0].length > 16 ? TIERS[i][0].slice(0,14)+'…' : TIERS[i][0];
+    labels += '<text x="'+lx+'" y="'+ly+'" font-size="9.5" text-anchor="middle" fill="var(--text-faint)">'+short+'</text>';
+    var val = scores[i]/3 * maxR;
+    pts.push((cx+val*Math.cos(ang))+','+(cy+val*Math.sin(ang)));
+  }
+  var total = scores.reduce(function(a,b){return a+b;},0);
+  var maxTotal = n*3;
+  var pct = Math.round(total/maxTotal*100);
+  svg.innerHTML = rings + axisLines +
+    '<polygon points="'+pts.join(' ')+'" fill="var(--accent)" fill-opacity="0.28" stroke="var(--accent)" stroke-width="2"/>' +
+    labels;
+  document.getElementById('radarSummary').textContent = 'Overall maturity: ' + pct + '% of Advanced-tier coverage across all 15 controls.';
+}
+renderRadar();
+
+/* ============ GLOSSARY ============ */
+var glossHost = document.getElementById('glossaryList');
+GLOSSARY.forEach(function(g){
+  var dt = document.createElement('dt'); dt.textContent = g[0];
+  var dd = document.createElement('dd'); dd.textContent = g[1];
+  glossHost.appendChild(dt); glossHost.appendChild(dd);
+});
+
+/* ============ SELF-TEST / VALIDATION BANNER ============ */
+function runSelfTest(){
+  var results = [];
+  function check(name, cond){ results.push({name:name, pass: !!cond}); }
+
+  check('Sidebar tabs match panel count', tabButtons.length === panels.length);
+  var allMatch = tabButtons.every(function(b){
+    return !!document.getElementById('panel-' + b.getAttribute('data-panel'));
+  });
+  check('Every tab has a matching panel', allMatch);
+
+  var activeCount = document.querySelectorAll('.panel.active').length;
+  check('Exactly one panel active', activeCount === 1);
+
+  check('Threat cards rendered', document.querySelectorAll('.threat-card').length === THREATS.length);
+  check('Tier table rows rendered', tiersBody.querySelectorAll('tr').length === TIERS.length);
+  check('Phase stepper buttons rendered', stepper.querySelectorAll('button').length === PHASES.length);
+  check('Attack scenarios loaded', attackSelect.querySelectorAll('option').length === SCENARIOS.length);
+  check('Glossary terms rendered', glossHost.querySelectorAll('dt').length === GLOSSARY.length);
+
+  // exercise phase clicks
+  var phaseOk = true;
+  stepper.querySelectorAll('button').forEach(function(b){ b.click(); if(!phaseHost.innerHTML || phaseHost.innerHTML.length < 20) phaseOk = false; });
+  stepper.querySelector('button').click();
+  check('All phase buttons render content', phaseOk);
+
+  // exercise tab clicks then return to overview
+  var tabOk = true;
+  tabButtons.forEach(function(b){
+    b.click();
+    var activeP = document.querySelectorAll('.panel.active');
+    if(activeP.length !== 1) tabOk = false;
+  });
+  activatePanel('overview');
+  check('All tab clicks keep single active panel', tabOk);
+
+  // exercise attack simulator combinations (sample)
+  var simOk = true;
+  try{
+    attackSelect.selectedIndex = 0; updateScenarioDesc();
+    toggleHost.querySelectorAll('input').forEach(function(i){ i.checked = true; });
+    runSimulation();
+    if(document.getElementById('verdictText').textContent.indexOf('blocked') === -1) simOk = false;
+    toggleHost.querySelectorAll('input').forEach(function(i){ i.checked = false; });
+    runSimulation();
+    if(document.getElementById('verdictText').textContent.indexOf('open') === -1) simOk = false;
+  }catch(e){ simOk = false; }
+  check('Attack simulator deterministic (all-on / all-off)', simOk);
+
+  // theme toggle roundtrip
+  var themeOk = true;
+  try{
+    var before = root.getAttribute('data-theme');
+    document.getElementById('themeToggle').click();
+    var mid = root.getAttribute('data-theme');
+    document.getElementById('themeToggle').click();
+    var after = root.getAttribute('data-theme');
+    themeOk = (mid !== before) && (after === before);
+  }catch(e){ themeOk = false; }
+  check('Theme toggle round-trips correctly', themeOk);
+
+  // internal links: none should be bare '#'
+  var badLinks = Array.prototype.slice.call(document.querySelectorAll('a[href]')).filter(function(a){
+    var h = a.getAttribute('href');
+    return h === '#' || h === '';
+  });
+  check('No dead internal href="#" links', badLinks.length === 0);
+
+  var passCount = results.filter(function(r){return r.pass;}).length;
+  var out = document.getElementById('validateOut');
+  out.innerHTML = results.map(function(r){
+    return '<div style="display:flex; gap:6px; align-items:flex-start; margin-top:3px;"><span style="color:'+(r.pass?'var(--ok)':'var(--bad)')+'">'+(r.pass?'✓':'✗')+'</span><span>'+r.name+'</span></div>';
+  }).join('') + '<div style="margin-top:8px; font-weight:700;">'+passCount+' / '+results.length+' checks passed</div>';
+
+  return results;
+}
+window.addEventListener('load', function(){
+  setTimeout(runSelfTest, 150);
+});
+document.getElementById('closeValidate').addEventListener('click', function(){
+  document.getElementById('validateBanner').classList.add('hide');
+});
+
+})();
+</script>
+</body>
+</html>

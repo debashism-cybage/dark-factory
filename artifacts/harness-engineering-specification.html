@@ -1,0 +1,2487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harness Engineering Specification v1.1 — Cybage</title>
+<meta name="description" content="Reference specification for AI agent harness engineering: architecture, governing principles, autonomy levels, security, evaluation, and adoption roadmap.">
+<style>
+:root{
+  --bg:#FFFFFF; --surface:#F7F8FA; --text:#0B1220; --muted:#4A5568;
+  --accent:#1E3A8A; --success:#0F766E; --warning:#B45309; --danger:#B91C1C;
+  --code-bg:#F1F5F9; --border:#E2E6EA; --accent-rgb:30,58,138;
+  --font-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SF Mono",Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+}
+:root[data-theme="dark"]{
+  --bg:#0B1220; --surface:#111827; --text:#E5E7EB; --muted:#9CA3AF;
+  --accent:#93C5FD; --success:#5EEAD4; --warning:#FCD34D; --danger:#FCA5A5;
+  --code-bg:#1F2937; --border:#243042; --accent-rgb:147,197,253;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} *{animation-duration:.001ms !important;transition-duration:.001ms !important} }
+body{
+  margin:0; background:var(--bg); color:var(--text); font-family:var(--font-body);
+  font-size:16px; line-height:1.65; transition:background .15s ease,color .15s ease;
+}
+a{color:var(--accent)}
+.skip-link{
+  position:absolute; left:-999px; top:0; background:var(--accent); color:var(--bg);
+  padding:.6rem 1rem; z-index:1000; border-radius:0 0 6px 0; font-weight:600;
+}
+.skip-link:focus{ left:0; }
+:focus-visible{ outline:3px solid var(--accent); outline-offset:2px; }
+
+/* Top bar */
+.topbar{
+  position:sticky; top:0; z-index:60; height:56px; display:flex; align-items:center;
+  gap:.75rem; padding:0 1rem; background:var(--surface); border-bottom:1px solid var(--border);
+}
+.topbar .doc-name{ font-weight:700; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.topbar .part-indicator{ color:var(--muted); font-size:13px; white-space:nowrap; display:none; }
+@media (min-width:640px){ .topbar .part-indicator{ display:inline; } }
+.topbar .spacer{ flex:1; }
+.topbar button, .topbar .btn{
+  background:transparent; border:1px solid var(--border); color:var(--text);
+  border-radius:6px; padding:.4rem .65rem; font-size:13px; cursor:pointer; font-family:inherit;
+}
+.topbar button:hover{ background:rgba(var(--accent-rgb),.1); }
+#toc-drawer-btn{ display:inline-flex; }
+@media (min-width:1024px){ #toc-drawer-btn{ display:none; } }
+.progress-bar{ position:sticky; top:56px; z-index:59; height:2px; background:var(--border); }
+.progress-bar-fill{ height:100%; width:0%; background:var(--accent); transition:width .1s linear; }
+
+/* Shell */
+.shell{ display:flex; max-width:1400px; margin:0 auto; }
+.sidebar{
+  width:300px; flex:none; border-right:1px solid var(--border); padding:1rem .75rem 3rem;
+  position:sticky; top:58px; align-self:flex-start; height:calc(100vh - 58px); overflow-y:auto;
+}
+@media (max-width:1023px){
+  .sidebar{ position:fixed; left:0; top:58px; bottom:0; z-index:70; background:var(--bg);
+    transform:translateX(-105%); transition:transform .2s ease; width:85vw; max-width:340px; height:calc(100vh - 58px); }
+  .sidebar.open{ transform:translateX(0); box-shadow:2px 0 16px rgba(0,0,0,.25); }
+}
+.sidebar h2.toc-heading{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:1.1rem 0 .35rem; }
+.toc-group{ margin-bottom:.25rem; }
+.toc-group-toggle{
+  width:100%; text-align:left; background:none; border:none; color:var(--text); font:inherit;
+  font-weight:700; font-size:13.5px; padding:.35rem .25rem; cursor:pointer; display:flex; align-items:center; gap:.4rem;
+  border-radius:6px;
+}
+.toc-group-toggle:hover{ background:rgba(var(--accent-rgb),.08); }
+.toc-group-toggle .chev{ transition:transform .15s ease; font-size:10px; }
+.toc-group.collapsed .chev{ transform:rotate(-90deg); }
+.toc-group.collapsed .toc-list{ display:none; }
+.toc-list{ list-style:none; margin:0; padding:0 0 .25rem .6rem; }
+.toc-list li{ margin:0; }
+.toc-list a{
+  display:block; padding:.3rem .5rem; font-size:13.5px; text-decoration:none; color:var(--muted);
+  border-radius:6px; border-left:2px solid transparent;
+}
+.toc-list a:hover{ background:rgba(var(--accent-rgb),.08); color:var(--text); }
+.toc-list a.active{ color:var(--accent); border-left-color:var(--accent); background:rgba(var(--accent-rgb),.1); font-weight:600; }
+#toc-search{
+  width:100%; padding:.45rem .6rem; border-radius:6px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text); font:inherit; font-size:13.5px; margin-bottom:.25rem;
+}
+.toc-nomatch{ color:var(--muted); font-size:12.5px; padding:.3rem .5rem; display:none; }
+
+main{ flex:1; min-width:0; padding:2rem clamp(1rem,4vw,3rem) 6rem; }
+.content{ max-width:820px; margin:0 auto; }
+.content h1{ font-size:32px; line-height:1.25; margin:2rem 0 1rem; scroll-margin-top:120px; }
+.content h2{ font-size:26px; line-height:1.3; margin:2.5rem 0 .9rem; scroll-margin-top:120px; border-top:1px solid var(--border); padding-top:1.5rem; }
+.content h1 + h2, .content hr + h2{ border-top:none; padding-top:0; }
+.content h3{ font-size:22px; margin:1.6rem 0 .6rem; scroll-margin-top:120px; }
+.content h4{ font-size:18px; margin:1.2rem 0 .5rem; }
+.content p{ margin:.75rem 0; max-width:75ch; }
+.content ul, .content ol{ padding-left:1.4rem; max-width:75ch; }
+.content li{ margin:.3rem 0; }
+.content hr{ border:none; border-top:1px solid var(--border); margin:2.5rem 0; }
+.content strong{ font-weight:700; }
+.anchor-link{ opacity:0; margin-left:.4rem; font-size:.75em; text-decoration:none; }
+h1:hover .anchor-link, h2:hover .anchor-link, h3:hover .anchor-link, .anchor-link:focus{ opacity:1; }
+
+/* front matter meta */
+.doc-meta{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem 1.3rem; margin:1rem 0 2rem; font-size:14.5px; }
+.doc-meta p{ margin:.3rem 0; }
+
+/* Hero / TL;DR */
+blockquote{
+  margin:1.2rem 0; padding:.9rem 1.2rem; border-left:4px solid var(--accent);
+  background:rgba(var(--accent-rgb),.06); border-radius:0 8px 8px 0; color:var(--text);
+}
+blockquote p{ margin:.4rem 0; }
+h2[id$="-tldr"]{ border-top:none; }
+h2[id$="-tldr"] + blockquote{
+  font-size:18px; position:relative; padding-top:2.1rem;
+}
+h2[id$="-tldr"] + blockquote::before{
+  content:"In brief"; position:absolute; top:.55rem; left:1.2rem; font-size:11px; font-weight:700;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--accent);
+}
+#executive-framing{ scroll-margin-top:120px; }
+#executive-framing + p{
+  background:linear-gradient(135deg, rgba(var(--accent-rgb),.14), rgba(var(--accent-rgb),.03));
+  border:1px solid var(--border); border-radius:12px; padding:1.3rem 1.5rem; font-size:17px;
+}
+
+/* Tables */
+.table-wrap{ overflow-x:auto; margin:1.2rem 0; border:1px solid var(--border); border-radius:8px; }
+table{ border-collapse:collapse; width:100%; font-size:14.5px; }
+caption{ text-align:left; padding:.5rem; font-weight:600; }
+th, td{ padding:.55rem .75rem; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+thead th{ background:var(--surface); position:sticky; top:0; font-weight:700; }
+tbody tr:nth-child(even){ background:rgba(var(--accent-rgb),.035); }
+@media (max-width:640px){
+  table, thead, tbody, th, td, tr{ display:block; }
+  thead{ display:none; }
+  tr{ border-bottom:2px solid var(--border); padding:.5rem 0; }
+  td{ border:none; padding:.25rem .75rem; display:flex; gap:.5rem; }
+  td::before{ content:attr(data-label); font-weight:700; min-width:40%; color:var(--muted); }
+}
+
+/* Code */
+.codewrap{ position:relative; margin:1.1rem 0; }
+pre{
+  background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:1rem 1rem;
+  overflow-x:auto; font-family:var(--font-mono); font-size:14px; line-height:1.4;
+}
+code{ font-family:var(--font-mono); font-size:.92em; }
+:not(pre) > code{ background:var(--code-bg); padding:.1em .35em; border-radius:4px; }
+.code-copy-btn{
+  position:absolute; top:.5rem; right:.5rem; font-size:11px; padding:.25rem .55rem; border-radius:6px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; opacity:.85;
+}
+.code-copy-btn:hover{ opacity:1; }
+.code-lang{ position:absolute; top:.5rem; left:.75rem; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+.codewrap pre{ padding-top:1.9rem; }
+
+/* ASCII flow blocks (non-primary diagrams) */
+.ascii-flow{ border-left:3px solid var(--accent); }
+
+/* Reference architecture SVG diagram */
+.arch-diagram{ margin:1.4rem 0; }
+.arch-diagram svg{ width:100%; height:auto; display:block; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+.arch-box{ fill:var(--bg); stroke:var(--border); stroke-width:1.5; }
+.arch-box-io{ fill:rgba(var(--accent-rgb),.12); }
+.arch-title{ fill:var(--text); font:700 15px var(--font-body); }
+.arch-item{ fill:var(--muted); font:12.5px var(--font-body); }
+.arch-line{ stroke:var(--accent); stroke-width:2; fill:none; }
+.arch-arrowhead{ fill:var(--accent); }
+.arch-diagram figcaption{ margin-top:.5rem; }
+.ascii-toggle{ font-size:12.5px; padding:.35rem .7rem; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; }
+.ascii-fallback{ margin-top:.6rem; }
+.hidden{ display:none !important; }
+
+/* Toast */
+.toast{
+  position:fixed; bottom:1.25rem; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--text); color:var(--bg); padding:.6rem 1rem; border-radius:8px; font-size:13.5px;
+  opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease; z-index:200;
+}
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* Dialog */
+dialog{
+  border:1px solid var(--border); border-radius:12px; padding:0; background:var(--bg); color:var(--text);
+  max-width:480px; width:90vw;
+}
+dialog::backdrop{ background:rgba(0,0,0,.45); }
+.dialog-inner{ padding:1.4rem 1.6rem; }
+.dialog-inner h2{ margin-top:0; font-size:20px; border:none; padding-top:0; }
+.dialog-inner table{ width:100%; }
+.dialog-close{ float:right; background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); }
+
+/* Footer */
+footer.site-footer{
+  border-top:1px solid var(--border); padding:2rem clamp(1rem,4vw,3rem); font-size:13.5px; color:var(--muted);
+  max-width:820px; margin:3rem auto 0;
+}
+footer.site-footer a{ color:var(--accent); }
+.back-to-top{ display:inline-block; margin-top:.5rem; }
+
+mark{ background:rgba(var(--accent-rgb),.35); color:inherit; border-radius:2px; }
+.visually-hidden{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+kbd{ background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:.1em .45em; font-family:var(--font-mono); font-size:.85em; }
+
+/* Print */
+@page{
+  size: A4;
+  margin: 2.2cm 2cm 2.4cm 2cm;
+  @bottom-center{
+    content: "Harness Engineering Specification v1.2 — Cybage — Page " counter(page) " of " counter(pages);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 8.5pt;
+    color: #666;
+  }
+}
+@media print{
+  :root{ --bg:#fff; --surface:#fff; --text:#000; --muted:#333; --accent:#1E3A8A; --border:#ccc; --code-bg:#f5f5f5; }
+  .topbar, .sidebar, .progress-bar, #toc-drawer-btn, .code-copy-btn, .ascii-toggle, .toast, dialog, .skip-link{ display:none !important; }
+  .shell{ display:block; max-width:none; }
+  main{ padding:0; }
+  .content{ max-width:none; }
+  .content h1[data-part]{ break-before:page; }
+  pre{ break-inside:avoid; }
+  a{ color:#000; text-decoration:underline; }
+}
+
+</style>
+</head>
+<body>
+<a href="#main-content" class="skip-link">Skip to content</a>
+
+<header class="topbar">
+  <button id="toc-drawer-btn" aria-expanded="false" aria-controls="sidebar" aria-label="Toggle table of contents">☰ Contents</button>
+  <span class="doc-name">Harness Engineering Specification</span>
+  <span class="part-indicator">v1.1 · Reference Specification</span>
+  <span class="spacer"></span>
+  <button id="shortcuts-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">⌨</button>
+  <button id="print-btn" aria-label="Print this document">🖨 Print</button>
+  <button id="theme-toggle" aria-pressed="false" aria-label="Toggle light or dark theme">☀️ Light</button>
+</header>
+<div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Table of contents">
+    <label for="toc-search" class="visually-hidden">Search this document</label>
+    <input type="search" id="toc-search" placeholder="Search (press /)" aria-label="Search document">
+    <p class="toc-nomatch" id="toc-nomatch">No matches.</p>
+    <nav aria-label="Document sections">
+    
+<div class="toc-group" id="toc-group-front">
+  <button type="button" class="toc-group-toggle" aria-expanded="true"><span class="chev">&#9660;</span> Front Matter</button>
+  <ul class="toc-list"><li><a href="#executive-framing" class="">Executive Framing (One-Page TL;DR)</a></li><li><a href="#how-to-use" class="">How to Use This Document</a></li><li><a href="#table-of-contents" class="">Table of Contents</a></li></ul>
+</div>
+
+<div class="toc-group" id="toc-group-part-i">
+  <button type="button" class="toc-group-toggle" aria-expanded="true"><span class="chev">&#9660;</span> PART I — WHY</button>
+  <ul class="toc-list"><li><a href="#part-i-tldr" class="">Part I TL;DR</a></li><li><a href="#ch-1-executive-summary" class="">1. Executive Summary</a></li><li><a href="#ch-2-the-shift-request-response-goal-execution" class="">2. The Shift: Request-Response → Goal-Execution</a></li><li><a href="#ch-3-market-need" class="">3. Market Need</a></li><li><a href="#ch-4-short-medium-and-long-term-impact" class="">4. Short-, Medium-, and Long-Term Impact</a></li></ul>
+</div>
+
+<div class="toc-group" id="toc-group-part-ii">
+  <button type="button" class="toc-group-toggle" aria-expanded="true"><span class="chev">&#9660;</span> PART II — WHAT</button>
+  <ul class="toc-list"><li><a href="#part-ii-tldr" class="">Part II TL;DR</a></li><li><a href="#ch-5-definitions" class="">5. Definitions</a></li><li><a href="#ch-6-governing-principles" class="">6. Governing Principles</a></li><li><a href="#ch-7-harness-landscape-positioning" class="">7. Harness Landscape &amp; Positioning</a></li><li><a href="#ch-8-autonomy-levels-a0-a5" class="">8. Autonomy Levels (A0–A5)</a></li></ul>
+</div>
+
+<div class="toc-group" id="toc-group-part-iii">
+  <button type="button" class="toc-group-toggle" aria-expanded="true"><span class="chev">&#9660;</span> PART III — HOW</button>
+  <ul class="toc-list"><li><a href="#part-iii-tldr" class="">Part III TL;DR</a></li><li><a href="#ch-9-reference-architecture" class="">9. Reference Architecture</a></li><li><a href="#ch-10-logical-components" class="">10. Logical Components</a></li><li><a href="#ch-11-execution-lifecycle" class="">11. Execution Lifecycle</a></li><li><a href="#ch-12-software-engineering-requirements" class="">12. Software Engineering Requirements</a></li><li><a href="#ch-13-ai-assisted-coding-specification" class="">13. AI-Assisted Coding Specification</a></li><li><a href="#ch-14-html-frontend-generation-specification" class="">14. HTML &amp; Frontend Generation Specification</a></li><li><a href="#ch-15-harness-design-patterns" class="">15. Harness Design Patterns</a></li><li><a href="#ch-16-anti-patterns" class="">16. Anti-Patterns</a></li><li><a href="#ch-17-self-extension-self-modification" class="">17. Self-Extension &amp; Self-Modification</a></li><li><a href="#ch-18-security-architecture" class="">18. Security Architecture</a></li><li><a href="#ch-19-reliability-recovery" class="">19. Reliability &amp; Recovery</a></li></ul>
+</div>
+
+<div class="toc-group" id="toc-group-part-iv">
+  <button type="button" class="toc-group-toggle" aria-expanded="true"><span class="chev">&#9660;</span> PART IV — PROVE</button>
+  <ul class="toc-list"><li><a href="#part-iv-tldr" class="">Part IV TL;DR</a></li><li><a href="#ch-20-evaluation-engineering" class="">20. Evaluation Engineering</a></li><li><a href="#ch-21-observability-metrics" class="">21. Observability &amp; Metrics</a></li><li><a href="#ch-22-definition-of-done-for-a-production-harness" class="">22. Definition of Done for a Production Harness</a></li></ul>
+</div>
+
+<div class="toc-group" id="toc-group-part-v">
+  <button type="button" class="toc-group-toggle" aria-expanded="true"><span class="chev">&#9660;</span> PART V — ADOPT</button>
+  <ul class="toc-list"><li><a href="#part-v-tldr" class="">Part V TL;DR</a></li><li><a href="#ch-23-enterprise-product-requirements" class="">23. Enterprise Product Requirements</a></li><li><a href="#ch-24-isv-product-requirements" class="">24. ISV Product Requirements</a></li><li><a href="#ch-25-external-agent-interoperability" class="">25. External Agent Interoperability</a></li><li><a href="#ch-26-worked-examples" class="">26. Worked Examples</a></li><li><a href="#ch-27-build-buy-or-compose" class="">27. Build, Buy, or Compose</a></li><li><a href="#ch-28-delivery-roadmap" class="">28. Delivery Roadmap</a></li><li><a href="#ch-29-team-operating-model" class="">29. Team &amp; Operating Model</a></li><li><a href="#ch-30-maturity-model" class="">30. Maturity Model</a></li><li><a href="#ch-31-key-strategic-decisions" class="">31. Key Strategic Decisions</a></li><li><a href="#ch-32-recommended-engineering-position" class="">32. Recommended Engineering Position</a></li><li><a href="#ch-33-conclusion" class="">33. Conclusion</a></li></ul>
+</div>
+
+<div class="toc-group" id="toc-group-appendices">
+  <button type="button" class="toc-group-toggle" aria-expanded="true"><span class="chev">&#9660;</span> Appendices</button>
+  <ul class="toc-list"><li><a href="#app-a-minimal-agent-definition" class="">Appendix A — Minimal Agent Definition</a></li><li><a href="#app-b-tool-contract-example" class="">Appendix B — Tool Contract Example</a></li><li><a href="#app-c-production-readiness-checklist" class="">Appendix C — Production Readiness Checklist</a></li><li><a href="#app-d-html-rendering-directives-authoritative" class="">Appendix D — HTML Rendering Directives *(authoritative)*</a></li><li><a href="#app-e-references-source-notes" class="">Appendix E — References &amp; Source Notes</a></li><li><a href="#app-f-glossary" class="">Appendix F — Glossary</a></li></ul>
+</div>
+    </nav>
+  </aside>
+
+  <main id="main-content">
+    <div class="content">
+<h1 id="doc-title">Harness Engineering Specification</h1>
+<p><strong>Document type:</strong> Product, platform, architecture, and engineering specification
+<strong>Version:</strong> 1.2 (deepened with production-durability and coupling analysis)
+<strong>Date:</strong> 13 July 2026
+<strong>Status:</strong> Reference specification — approved for internal use and controlled external distribution
+<strong>Owner:</strong> Cybage — AI Consulting &amp; Digital Transformation Practice
+<strong>Audience:</strong> Enterprise architects, ISV product leaders, platform engineering teams, AI engineering teams, software developers, security teams, SRE/DevOps teams, QA engineering teams, and technology service providers
+<strong>Companion assets:</strong> <em>AI-Native SDLC Blueprint v1.1</em>, <em>19-Point Capability Mapping</em>, <em>AI-SDLC PoV — Five-Index Measurement Framework</em>, <em>Harness Engineering — Tool Landscape Reference (xlsx)</em>, <em>Harness Simulation — Enterprise Service-Desk Agent (interactive HTML)</em></p>
+<h3 id="version-history">Version history</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Version</th>
+<th scope="col">Date</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Version">1.0</td>
+<td data-label="Date">13 July 2026</td>
+<td data-label="Change">Initial reference specification.</td>
+</tr>
+<tr>
+<td data-label="Version">1.1</td>
+<td data-label="Date">13 July 2026</td>
+<td data-label="Change">Polished for HTML publication; added Appendix D render directives, glossary, five-part narrative structure.</td>
+</tr>
+<tr>
+<td data-label="Version">1.2</td>
+<td data-label="Date">13 July 2026</td>
+<td data-label="Change">Added §2.6 (model–harness coupling tension), §3.4 (local-to-fleet migration path), extended §10.6 (dynamic graph framing, mid-flight version pinning), new §15.16 (durable task-queue mediation) and §15.17 (companion/trainer agent), extended §20.3 (counterfactual-replay caveat), extended §7.3 (ZenML/Kitaru and open-model commoditization). Sourced from <em>Practical AI</em> episode 363, "Building Durable AI Agents" (Hamza Tahir, ZenML/Kitaru; 9 July 2026) — see Appendix E.</td>
+</tr>
+</tbody>
+</table></div>
+<hr/>
+<h2 id="executive-framing">Executive Framing (One-Page TL;DR)</h2>
+<p>AI agents shift software from a request-response model to a goal-execution model. The model provides probabilistic intelligence; the <strong>harness</strong> converts that intelligence into controlled, observable, and commercially viable software behaviour. As models become more capable and more interchangeable, durable engineering value migrates into the harness: its context model, execution controls, state model, tool contracts, evaluation assets, recovery mechanisms, and accumulated operational knowledge.</p>
+<p>This specification defines what an enterprise-grade or ISV-grade harness must contain, how it should be engineered, how it should be evaluated, and how it should be adopted. It is platform-agnostic and framework-agnostic. It is designed to complement the Cybage <em>AI-Native SDLC Blueprint v1.1</em> and the <em>Five-Index Measurement Framework</em> (Adoption → Utilization → Quality → Velocity → Outcome).</p>
+<p>The central engineering thesis:</p>
+<blockquote>
+<p><strong>The durable value of an agentic product will increasingly reside in the harness — not in the model. Organisations that industrialise harness engineering will convert changing model capability into reliable, differentiated, and governable software outcomes.</strong></p>
+</blockquote>
+<p>The specification is organised as a five-part narrative — <strong>Why → What → How → Prove → Adopt</strong> — followed by six appendices, including an authoritative HTML rendering directive (Appendix D) that governs how this document is published as an interactive single-file HTML deliverable.</p>
+<hr/>
+<h2 id="how-to-use">How to Use This Document</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">If you are…</th>
+<th scope="col">Start with</th>
+<th scope="col">Then read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="If you are…">A CIO, CTO, or VP Engineering</td>
+<td data-label="Start with">Executive Framing, Part I</td>
+<td data-label="Then read">Chapters 8, 27, 30, 32</td>
+</tr>
+<tr>
+<td data-label="If you are…">An enterprise architect</td>
+<td data-label="Start with">Part I → Part II → Part III</td>
+<td data-label="Then read">Appendix A, B, C</td>
+</tr>
+<tr>
+<td data-label="If you are…">A platform engineering lead</td>
+<td data-label="Start with">Part III (Ch 9–19)</td>
+<td data-label="Then read">Appendix A, B, C, D</td>
+</tr>
+<tr>
+<td data-label="If you are…">A security or risk owner</td>
+<td data-label="Start with">Chapters 6, 8, 18</td>
+<td data-label="Then read">Appendix C, F</td>
+</tr>
+<tr>
+<td data-label="If you are…">An ISV product leader</td>
+<td data-label="Start with">Chapters 3, 24, 25, 26</td>
+<td data-label="Then read">Appendices A, D</td>
+</tr>
+<tr>
+<td data-label="If you are…">A delivery / consulting lead</td>
+<td data-label="Start with">Part V (Ch 27–33)</td>
+<td data-label="Then read">Appendix C</td>
+</tr>
+<tr>
+<td data-label="If you are…">An AI coding tool implementer</td>
+<td data-label="Start with">Chapters 13, 14</td>
+<td data-label="Then read">Appendix A, B, D</td>
+</tr>
+</tbody>
+</table></div>
+<p>Cross-references throughout the document use the form <em>(see §X.Y)</em> or <em>(see Ch N)</em>. Terminology follows Appendix F — Glossary; Cybage-specific vocabulary (HIL, CoE, L1–L5, T1/T2/T3, RAG, MCP, DART-PEM) is preserved where relevant.</p>
+<hr/>
+<h2 id="table-of-contents">Table of Contents</h2>
+<p><strong>PART I — WHY: The Case for Harness Engineering</strong>
+1. Executive Summary
+2. The Shift: Request-Response → Goal-Execution
+3. Market Need — Enterprise, ISV, Service Providers
+4. Short-, Medium-, and Long-Term Impact</p>
+<p><strong>PART II — WHAT: Concepts, Principles, Landscape</strong>
+5. Definitions
+6. Governing Principles
+7. Harness Landscape &amp; Positioning
+8. Autonomy Levels (A0–A5)</p>
+<p><strong>PART III — HOW: Architecture &amp; Engineering</strong>
+9. Reference Architecture
+10. Logical Components
+11. Execution Lifecycle
+12. Software Engineering Requirements
+13. AI-Assisted Coding Specification
+14. HTML &amp; Frontend Generation Specification
+15. Harness Design Patterns
+16. Anti-Patterns
+17. Self-Extension &amp; Self-Modification
+18. Security Architecture
+19. Reliability &amp; Recovery</p>
+<p><strong>PART IV — PROVE: Evaluation, Observability, Readiness</strong>
+20. Evaluation Engineering
+21. Observability &amp; Metrics
+22. Definition of Done for a Production Harness</p>
+<p><strong>PART V — ADOPT: Product, Delivery, Strategy</strong>
+23. Enterprise Product Requirements
+24. ISV Product Requirements
+25. External Agent Interoperability
+26. Worked Examples (Coding · Service Desk · ISV Config · Self-Extension)
+27. Build, Buy, or Compose
+28. Delivery Roadmap
+29. Team &amp; Operating Model
+30. Maturity Model
+31. Key Strategic Decisions
+32. Recommended Engineering Position
+33. Conclusion</p>
+<p><strong>Appendices</strong>
+A. Minimal Agent Definition
+B. Tool Contract Example
+C. Production Readiness Checklist
+D. HTML Rendering Directives <em>(authoritative — governs the HTML render)</em>
+E. References &amp; Source Notes
+F. Glossary</p>
+<hr/>
+<h1 data-part="true" id="part-i">PART I — WHY</h1>
+<h2 id="part-i-tldr">Part I TL;DR</h2>
+<blockquote>
+<p>Agentic software makes execution paths probabilistic, natural language part of the control surface, and every step a potential state change. Traditional application scaffolding — REST controllers, cron jobs, workflow engines — cannot enforce the safety, reversibility, and evidence properties agentic work demands. Enterprises need a shared harness to industrialise adoption; ISVs need one to build a competitive moat; service providers need one to deliver managed agentic outcomes at scale. Ignoring the harness layer is the single most common cause of stalled agent pilots.</p>
+</blockquote>
+<hr/>
+<h2 id="ch-1-executive-summary">1. Executive Summary</h2>
+<p>AI agents are moving software systems from a request-response model to a goal-execution model. In a request-response system, software receives a defined input, executes predetermined logic, and returns a bounded output. In an agentic system, a model interprets intent, selects tools, changes state, generates or modifies code, reacts to failures, and may continue operating across multiple steps or sessions.</p>
+<p>This shift makes the <strong>agent harness</strong> a critical software engineering layer.</p>
+<p>A harness is the controlled runtime and engineering environment in which an AI agent operates. It determines:</p>
+<ul>
+<li>what the agent can see;</li>
+<li>which tools it can invoke;</li>
+<li>how it plans and executes work;</li>
+<li>how state and memory are maintained;</li>
+<li>where code and commands run;</li>
+<li>how permissions are granted;</li>
+<li>how failures are recovered;</li>
+<li>how actions are observed and audited;</li>
+<li>how cost, latency, quality, and risk are controlled;</li>
+<li>how humans intervene;</li>
+<li>and how the system is tested, released, and improved.</li>
+</ul>
+<p>The model provides probabilistic intelligence. The harness converts that intelligence into controlled software behaviour.</p>
+<p>The central engineering thesis of this specification is:</p>
+<blockquote>
+<p><strong>The durable value of an agentic product will increasingly reside in the harness: its context model, execution controls, state model, tool contracts, evaluation assets, recovery mechanisms, and accumulated operational knowledge.</strong></p>
+</blockquote>
+<p>Open-source systems such as Pi, LangGraph, smolagents, and other agent runtimes demonstrate different architectural directions:</p>
+<ul>
+<li><strong>Pi</strong> emphasises a small terminal-native core extended through TypeScript modules, skills, prompt templates, packages, and custom providers.</li>
+<li><strong>LangGraph</strong> emphasises explicit stateful graphs, cyclic execution, persistence, interrupts, fault recovery, and human-in-the-loop workflows.</li>
+<li><strong>smolagents</strong> emphasises a minimal Python agent abstraction and code-first tool execution, including sandbox integrations.</li>
+<li><strong>Deep-agent and autonomous-worker approaches</strong> emphasise long-running work, planning, delegation, and durable execution.</li>
+</ul>
+<p>These tools are useful foundations, but an enterprise or ISV-grade harness requires substantially more than selecting a framework. It requires a coherent platform architecture, software engineering standards, security controls, product design, test strategy, observability, governance, and an operating model.</p>
+<p>This document defines those requirements.</p>
+<h3 id="ch-1-1-purpose">1.1 Purpose</h3>
+<p>This specification establishes a reusable standard for designing, building, testing, deploying, operating, and evolving AI agent harnesses. It supports four practical outcomes:</p>
+<ol>
+<li><strong>Build agentic software safely.</strong> Convert model capabilities into controlled, observable, repeatable business operations.</li>
+<li><strong>Create reusable engineering assets.</strong> Avoid rebuilding tool integration, state, permissions, sandboxing, evaluation, and telemetry for every agent.</li>
+<li><strong>Enable enterprise and ISV adoption.</strong> Meet requirements for security, tenancy, compliance, extensibility, reliability, and product lifecycle management.</li>
+<li><strong>Standardise AI-assisted software delivery.</strong> Define how any AI coding tool should generate, change, test, validate, and document code, APIs, services, and HTML applications.</li>
+</ol>
+<h3 id="ch-1-2-scope">1.2 Scope</h3>
+<p><strong>In scope:</strong> agent runtime architecture; framework-versus-harness responsibilities; model abstraction and routing; context engineering; state, memory, and persistence; tool and action design; workflow orchestration; planning and execution loops; sandboxing and isolation; policy and permission enforcement; identity, secrets, and tenancy; human approval and exception handling; reliability, recovery, and idempotency; observability and auditability; evaluation and regression testing; code generation and repository modification; HTML and frontend generation; CI/CD and release controls; enterprise and ISV product requirements; platform operating model; short-term and long-term business impact; reference patterns, anti-patterns, and examples; build-versus-buy decisions; maturity model and implementation roadmap.</p>
+<p><strong>Out of scope:</strong> training foundation models; designing model architectures; GPU infrastructure for model pre-training; generic chatbot UX without agent execution; business-domain rules unique to one industry; detailed legal interpretation for a specific jurisdiction; vendor procurement terms.</p>
+<hr/>
+<h2 id="ch-2-the-shift-request-response-goal-execution">2. The Shift: Request-Response → Goal-Execution</h2>
+<p>Traditional software engineering assumes application logic is authored directly in code. Agentic software introduces a second form of runtime logic: model-generated decisions. This changes the engineering problem in five ways.</p>
+<h3 id="ch-2-1-execution-paths-become-probabilistic">2.1 Execution paths become probabilistic</h3>
+<p>Two runs with similar input may select different tools, create different plans, or produce different intermediate artifacts. The harness must constrain this variability and measure whether it remains within acceptable bounds.</p>
+<h3 id="ch-2-2-context-becomes-executable-configuration">2.2 Context becomes executable configuration</h3>
+<p>Repository files, system instructions, policies, task history, memory, examples, and tool descriptions influence runtime behaviour. Context therefore requires versioning, testing, review, and release management (see §10.4).</p>
+<h3 id="ch-2-3-natural-language-becomes-part-of-the-control-surface">2.3 Natural language becomes part of the control surface</h3>
+<p>Prompts and instructions can change system behaviour, but they are weaker than code-based enforcement. Harness engineering must determine what belongs in natural language and what must remain in deterministic controls (see §6.3, §16.1).</p>
+<h3 id="ch-2-4-agents-modify-their-environment">2.4 Agents modify their environment</h3>
+<p>An agent may change code, configuration, infrastructure definitions, databases, tickets, customer records, or deployment state. This demands transactional thinking, permissions, sandboxing, evidence, and rollback (see Ch 15, Ch 17, Ch 18).</p>
+<h3 id="ch-2-5-long-running-work-needs-durable-coordination">2.5 Long-running work needs durable coordination</h3>
+<p>Tasks may pause for external systems, human approval, retries, model handoffs, or scheduled continuation. A production harness must support durable state and resumable execution rather than relying on one in-memory chat session (see §10.6, §19.2).</p>
+<p>Harness engineering therefore combines: distributed systems; workflow engines; secure software execution; platform engineering; developer experience; AI engineering; quality engineering; SRE; product architecture; policy engineering; and human-computer interaction.</p>
+<h3 id="ch-2-6-the-coupling-tension-model-coupled-versus-model-decoupled-harnesses">2.6 The coupling tension: model-coupled versus model-decoupled harnesses</h3>
+<p>A strategic fork has opened in how harnesses relate to the models they run. Two opposing approaches now compete for the same layer of the stack.</p>
+<p><strong>Model-coupled harnesses.</strong> Some harnesses are trained, via reinforcement learning, alongside a specific model family, so that the model becomes self-aware of the harness it runs inside — it learns the exact tool-call conventions, file-edit parameters, and context-management behaviour that harness expects. This coupling measurably improves tool-selection accuracy and task completion: swapping the underlying model for a different provider's model of comparable general capability degrades performance, because the fine-tuned familiarity with the harness's specific conventions is lost. This is a real and growing engineering advantage, not merely a vendor lock-in tactic — but it is still a lock-in, whichever way it is framed.</p>
+<p><strong>Model-decoupled harnesses.</strong> Other harnesses are deliberately built model-agnostic — favouring an open standard for tool-calling and context that does not depend on any one model provider. The stated rationale is direct: business continuity should not depend on the availability, pricing, or regulatory status of a single model provider (this restates the governing principle in §6.1, <em>the model is not the system</em>, from an adoption-risk rather than a purely architectural angle).</p>
+<p><strong>Why this matters for the build/buy/compose decision (Ch 27).</strong> As of mid-2026 this tension is unresolved industry-wide, and there is no single correct answer:</p>
+<ul>
+<li>Coupled harnesses currently win on raw task performance for the specific model they are tuned against.</li>
+<li>Decoupled harnesses win on portability, negotiating leverage, and resilience to supply-chain risk — including the very real scenario in which a specific model is restricted or banned for regulatory or export-control reasons mid-contract (see §18.6, Supply-chain controls).</li>
+<li>An organisation building a harness should make this trade-off an explicit, named decision (see §31, Key Strategic Decisions) rather than an implicit consequence of which vendor's quickstart was easiest to adopt.</li>
+</ul>
+<hr/>
+<h2 id="ch-3-market-need">3. Market Need</h2>
+<h3 id="ch-3-1-enterprise-market">3.1 Enterprise market</h3>
+<p>Enterprises need harness engineering because they cannot safely scale isolated agent experiments into core operations without a shared control layer.</p>
+<p>Key enterprise needs include: central identity and access control; data residency and privacy controls; audit and traceability; approval workflows; separation of duties; policy enforcement; model-provider governance; usage and cost management; integration with existing systems; reusable domain tools; resilience and operational support; vendor portability; compliance evidence; controlled citizen development; and consistent engineering standards.</p>
+<p>Without a common harness, departments create disconnected agents with incompatible tool definitions, weak security, duplicated infrastructure, inconsistent logs, and no common method to assess quality.</p>
+<p>The enterprise value of a harness is therefore not merely faster development. It is <strong>controlled reuse</strong>.</p>
+<h3 id="ch-3-2-isv-market">3.2 ISV market</h3>
+<p>ISVs need harness engineering for a different reason: the harness becomes part of the product architecture and competitive moat.</p>
+<p>An ISV-grade harness must support: multi-tenancy; tenant-specific policies and tools; customer-configurable workflows; model choice and regional deployment; extension marketplaces or plugin systems; safe customisation; versioned behaviour; metering and billing; customer-visible evidence; service-level objectives; product analytics; backward compatibility; and controlled feature rollout.</p>
+<p>For ISVs, the harness determines whether agentic capabilities remain a collection of demos or become a scalable product line.</p>
+<h3 id="ch-3-3-technology-service-providers">3.3 Technology service providers</h3>
+<p>Technology service providers can create a differentiated offering around harness engineering by combining: agent platform architecture; reusable accelerators; secure execution environments; domain-specific tools and skills; migration of existing workflows into agentic patterns; evaluation engineering; operational governance; and managed harness operations.</p>
+<p>The service opportunity is not limited to building agents. It includes modernising the client's software platform so agents can act through stable, machine-readable interfaces.</p>
+<h3 id="ch-3-4-the-local-to-fleet-migration-path">3.4 The local-to-fleet migration path</h3>
+<p>Most agent deployments today begin as a process running on a single developer's laptop or workstation — a terminal-native coding harness, a personal assistant, or a single research loop. This is a materially simpler engineering problem than what most organisations are actually migrating toward: agents that run disconnected from any individual's machine, executing in cloud compute the organisation controls, invoking arbitrary tools and remote skills, and operating as part of a fleet rather than a single instance.</p>
+<p>This local-to-fleet migration changes the problem in three concrete ways:</p>
+<ol>
+<li><strong>Scale becomes unconstrained by a laptop's presence.</strong> Once an agent no longer depends on a person keeping a machine open, the only practical ceiling on execution volume is cost — there is no architectural reason a fleet could not run many thousands of concurrent agent executions per hour. Enterprises should expect adoption to look flat for a period and then increase sharply once this threshold is crossed, not gradually.</li>
+<li><strong>Durability stops being optional.</strong> A single local process failing is an inconvenience the user restarts. A fleet-scale failure — a worker crashing mid-task, a network partition, a dependent service timing out — must be recovered automatically, because there is no human sitting in front of that specific execution to notice and retry it (see §15.16, new in this version, and §19).</li>
+<li><strong>The platform-investment argument sharpens.</strong> As in the earlier MLOps cycle, the organisations that invest early in an internal platform for running these workloads at scale gain a compounding advantage: the platform itself becomes a source of institutional knowledge about what actually works for that organisation's specific workloads, independent of which vendor's demo looked best. This reinforces §3.1's framing of the enterprise harness value as <em>controlled reuse</em>, not merely faster initial development.</li>
+</ol>
+<p>Organisations should treat "does this agent still need to run near a person's machine, or can it run disconnected in our own infrastructure" as an explicit checkpoint in the delivery roadmap (see Ch 28), because the infrastructure, durability, and observability requirements differ materially on either side of that line.</p>
+<hr/>
+<h2 id="ch-4-short-medium-and-long-term-impact">4. Short-, Medium-, and Long-Term Impact</h2>
+<h3 id="ch-4-1-short-term-impact-0-18-months">4.1 Short-term impact: 0–18 months</h3>
+<p><strong>Engineering impact.</strong> More code will be generated, making review, test, and integration the limiting constraints. Teams will standardise repository instructions, tool contracts, coding rules, and evaluation suites. Local and CI-based coding agents will become normal contributors to pull requests. Sandboxed execution and approval gates will be introduced around write operations. Platform teams will create common model gateways, agent telemetry, and secret brokering. Existing workflow engines will be combined with model-driven decision nodes. Quality engineering will shift from testing only the final application to testing agent trajectories and tool choices.</p>
+<p><strong>Organisational impact.</strong> AI platform teams will emerge beside cloud and data platform teams. Security teams will define agent identities and machine-action policies. Product managers will specify agent boundaries, escalation rules, evidence, and autonomy levels. Software developers will spend more time on architecture, contracts, tests, and validation than on routine code production.</p>
+<p><strong>Commercial impact.</strong> Buyers will ask vendors for measurable agent reliability, auditability, and cost controls. Open-source frameworks will reduce initial build cost, but production hardening will remain substantial. Pricing may split between model consumption, agent runtime, managed execution, and outcome-based charges.</p>
+<h3 id="ch-4-2-medium-term-impact-18-36-months">4.2 Medium-term impact: 18–36 months</h3>
+<p>Harnesses will become shared enterprise platforms rather than project-specific libraries. Agent behaviour will be versioned and released like software. Domain-specific agent stores, tool catalogs, policy packs, and evaluation packs will emerge. Software systems will expose agent-optimised APIs, metadata, and action semantics. Agents will coordinate across SDLC stages: planning, coding, testing, security, deployment, and operations. Product telemetry will measure not only clicks and API calls but delegated goals, autonomous completion, intervention rate, and evidence quality. Platform vendors will compete on durable execution, sandboxing, observability, interoperability, and governance.</p>
+<h3 id="ch-4-3-long-term-impact-3-7-years">4.3 Long-term impact: 3–7 years</h3>
+<p>The harness may become the primary application runtime for knowledge work and software operations. Many user journeys will be expressed as goals rather than screens and workflows. Software products will need both human-facing and agent-facing interaction layers. Application architecture will increasingly separate intent, policy, planning, execution, and evidence. The most valuable engineering assets may become tool contracts, verified workflows, domain memory, policy models, and evaluation corpora. Software engineers will design environments in which agents can safely construct or adapt solutions, rather than coding every execution path directly. Harness changes may alter product behaviour as materially as application code changes, requiring equivalent governance.</p>
+<hr/>
+<h1 data-part="true" id="part-ii">PART II — WHAT</h1>
+<h2 id="part-ii-tldr">Part II TL;DR</h2>
+<blockquote>
+<p>A harness is not a framework. A framework answers "how do I define an agent?" A harness answers "where does execution occur, what is permitted, what state persists, how is every action traced, and how are quality/risk/cost measured?" Ten governing principles anchor design: the model is not the system; the harness owns control; determinism where it matters; every action attributable; generated output untrusted until verified; least privilege; reversibility; explicit state; evaluation as product; evolvability. Autonomy is earned through evidence, not granted by model capability — the A0–A5 ladder makes this explicit.</p>
+</blockquote>
+<hr/>
+<h2 id="ch-5-definitions">5. Definitions</h2>
+<h3 id="ch-5-1-agent">5.1 Agent</h3>
+<p>A software actor that uses a model to interpret a goal, decide or select actions, invoke tools, observe outcomes, update state, and continue until a completion, escalation, or termination condition is reached.</p>
+<h3 id="ch-5-2-agent-framework">5.2 Agent framework</h3>
+<p>A development abstraction used to define agent behaviour, such as prompts, graph nodes, tool schemas, model calls, messages, or routing logic. A framework typically answers: How is an agent defined? How are tools registered? How are steps linked? How is a model called? How is state represented in application code?</p>
+<h3 id="ch-5-3-agent-harness">5.3 Agent harness</h3>
+<p>The concrete runtime, control plane, execution plane, and engineering environment in which an agent operates. A harness answers: Where does execution occur? What is permitted? What context is supplied? What state persists? How is every action traced? How are errors retried or compensated? How is a task paused, resumed, cancelled, or rewound? How are quality, risk, and cost measured? How are changes promoted to production?</p>
+<h3 id="ch-5-4-agent-platform">5.4 Agent platform</h3>
+<p>A productised collection of harness services, developer tooling, operations tooling, governance, deployment capabilities, and reusable components used to build and run multiple agents.</p>
+<h3 id="ch-5-5-tool">5.5 Tool</h3>
+<p>A typed, bounded capability exposed to an agent. Examples include reading a file, querying a database, creating a pull request, running a test, searching a knowledge base, or invoking a business API.</p>
+<h3 id="ch-5-6-skill">5.6 Skill</h3>
+<p>A reusable package of instructions, examples, tool usage guidance, domain conventions, and optional executable resources that enables an agent to perform a specific class of tasks.</p>
+<h3 id="ch-5-7-workflow">5.7 Workflow</h3>
+<p>A defined sequence or graph of states and actions, including branches, loops, gates, retries, approvals, and terminal conditions.</p>
+<h3 id="ch-5-8-sandbox">5.8 Sandbox</h3>
+<p>An isolated execution environment that limits filesystem, process, network, identity, and resource access for generated code or agent actions.</p>
+<h3 id="ch-5-9-context-engineering">5.9 Context engineering</h3>
+<p>The design of what information, instructions, tools, examples, policies, state, memory, and environmental observations are made available to a model at each step.</p>
+<h3 id="ch-5-10-evidence">5.10 Evidence</h3>
+<p>Machine-generated proof of an agent action or result, such as logs, diffs, command output, test results, screenshots, API responses, approvals, traces, checksums, or signed artifacts.</p>
+<p><em>(Extended glossary — including Cybage-specific terms HIL, CoE, L1–L5, T1/T2/T3, RAG, MCP, DART-PEM, ISV, SI — appears in Appendix F.)</em></p>
+<hr/>
+<h2 id="ch-6-governing-principles">6. Governing Principles</h2>
+<h3 id="ch-6-1-the-model-is-not-the-system">6.1 The model is not the system</h3>
+<p>The model is one replaceable reasoning component. Business continuity, safety, and product differentiation must not depend entirely on a single model or provider.</p>
+<h3 id="ch-6-2-the-harness-owns-control">6.2 The harness owns control</h3>
+<p>The harness, not the prompt, must enforce permissions, data boundaries, budgets, timeouts, approvals, and termination conditions.</p>
+<h3 id="ch-6-3-code-must-remain-deterministic-where-determinism-is-required">6.3 Code must remain deterministic where determinism is required</h3>
+<p>Use normal software for validation, calculations, policy enforcement, identity checks, data transformations, and transaction integrity. Use models where interpretation, synthesis, planning, or unstructured reasoning creates value.</p>
+<h3 id="ch-6-4-every-consequential-action-must-be-attributable">6.4 Every consequential action must be attributable</h3>
+<p>The system must record who initiated the task, which agent and version ran, which model was used, which tools were invoked, what changed, which evidence was produced, and who approved the outcome.</p>
+<h3 id="ch-6-5-generated-output-is-untrusted-until-verified">6.5 Generated output is untrusted until verified</h3>
+<p>Agent-produced code, queries, plans, files, and decisions must pass appropriate static, dynamic, policy, and human checks before use.</p>
+<h3 id="ch-6-6-least-privilege-is-the-default">6.6 Least privilege is the default</h3>
+<p>An agent receives only the minimum tools, data, credentials, network access, and execution time required for the current task.</p>
+<h3 id="ch-6-7-reversibility-is-a-design-requirement">6.7 Reversibility is a design requirement</h3>
+<p>Important actions must support preview, approval, rollback, compensation, branch isolation, versioning, or replay.</p>
+<h3 id="ch-6-8-state-must-be-explicit">6.8 State must be explicit</h3>
+<p>Important state must not exist only inside a prompt or model conversation. It must be represented in typed, inspectable, versioned data structures.</p>
+<h3 id="ch-6-9-evaluation-is-part-of-the-product">6.9 Evaluation is part of the product</h3>
+<p>An agent cannot be considered production-ready without repeatable task suites, safety tests, quality thresholds, and regression detection.</p>
+<h3 id="ch-6-10-the-harness-must-be-evolvable">6.10 The harness must be evolvable</h3>
+<p>Model providers, policies, workflows, tools, and evaluation criteria will change. Components must be replaceable behind stable contracts.</p>
+<hr/>
+<h2 id="ch-7-harness-landscape-positioning">7. Harness Landscape &amp; Positioning</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">System</th>
+<th scope="col">Primary orientation</th>
+<th scope="col">Architectural strength</th>
+<th scope="col">Appropriate use</th>
+<th scope="col">Main caution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="System">Pi</td>
+<td data-label="Primary orientation">Minimal terminal coding harness</td>
+<td data-label="Architectural strength">Small core, TypeScript extensions, skills, prompt templates, provider abstraction, session model</td>
+<td data-label="Appropriate use">Developer toolbeds, coding agents, custom local workflows, extensible CLI products</td>
+<td data-label="Main caution">Minimalism transfers more platform responsibility to the adopter</td>
+</tr>
+<tr>
+<td data-label="System">LangGraph</td>
+<td data-label="Primary orientation">Stateful agent orchestration</td>
+<td data-label="Architectural strength">Explicit graph state, cycles, persistence, checkpoints, stores, interrupts, recovery</td>
+<td data-label="Appropriate use">Complex workflows, long-running processes, regulated decision paths, multi-step business operations</td>
+<td data-label="Main caution">Graph complexity and state design require strong engineering discipline</td>
+</tr>
+<tr>
+<td data-label="System">smolagents</td>
+<td data-label="Primary orientation">Minimal code-first Python agents</td>
+<td data-label="Architectural strength">Compact abstractions, code actions, model flexibility, sandbox integrations</td>
+<td data-label="Appropriate use">Research, prototypes, local agents, Python-centric tool execution</td>
+<td data-label="Main caution">Production policy, tenancy, observability, and lifecycle controls must be added</td>
+</tr>
+<tr>
+<td data-label="System">Deep-agent stacks</td>
+<td data-label="Primary orientation">Long-running autonomous work</td>
+<td data-label="Architectural strength">Planning, delegation, memory, background execution, broad tool use</td>
+<td data-label="Appropriate use">Research, complex engineering tasks, exploratory work</td>
+<td data-label="Main caution">High cost, non-determinism, difficult evaluation, operational risk</td>
+</tr>
+<tr>
+<td data-label="System">Managed agent platforms</td>
+<td data-label="Primary orientation">Integrated runtime and operations</td>
+<td data-label="Architectural strength">Hosted identity, persistence, telemetry, deployment, scaling</td>
+<td data-label="Appropriate use">Faster enterprise adoption and managed operations</td>
+<td data-label="Main caution">Lock-in, pricing dependency, restricted extensibility</td>
+</tr>
+<tr>
+<td data-label="System">Custom harness</td>
+<td data-label="Primary orientation">Product-specific runtime</td>
+<td data-label="Architectural strength">Exact fit, strong differentiation, ownership of contracts and data</td>
+<td data-label="Appropriate use">Strategic ISV platforms, regulated domains, specialised developer products</td>
+<td data-label="Main caution">Highest engineering and maintenance cost</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="ch-7-1-selection-principle">7.1 Selection principle</h3>
+<p>Do not select a framework by feature count. Select an architectural approach based on: task duration; action risk; workflow predictability; state complexity; required observability; execution environment; extension model; latency; tenant model; developer language; operational ownership; and acceptable vendor dependency.</p>
+<h3 id="ch-7-2-recommended-positioning">7.2 Recommended positioning</h3>
+<p>Use a layered architecture in which:</p>
+<ul>
+<li>the <strong>agent framework</strong> is replaceable;</li>
+<li>the <strong>harness contracts</strong> are stable;</li>
+<li>the <strong>tool catalog</strong> is product-owned;</li>
+<li>the <strong>policy engine</strong> is external to the model;</li>
+<li>the <strong>state store</strong> is durable and typed;</li>
+<li>the <strong>sandbox</strong> is independently controlled;</li>
+<li>and the <strong>evaluation system</strong> can replay tasks across model and harness versions.</li>
+</ul>
+<h3 id="ch-7-3-illustrative-tool-landscape-as-of-july-2026">7.3 Illustrative tool landscape (as of July 2026)</h3>
+<p>The six conceptual categories in §7 map onto a fast-moving, real market. The tables below are illustrative, not exhaustive, and are a point-in-time snapshot — tool names, maintainers, and status will change. A fully detailed companion reference, <em>Harness Engineering — Tool Landscape Reference</em> (<code>harness-tool-landscape.xlsx</code>), tracks 86 tools and standards across these categories with a confidence rating per entry; consult it, not this table, before citing a specific figure externally.</p>
+<p><strong>Minimal terminal-native harnesses</strong> (Pi's category): Pi (Earendil Inc.); Claude Code (Anthropic); OpenAI Codex CLI (OpenAI); Gemini CLI (Google); Aider (OSS); Cline, opencode, Goose (independent OSS); OpenHands (OSS); Amp, Cursor CLI, Windsurf/Cascade, Devin (commercial — Sourcegraph, Anysphere, Cognition).</p>
+<p><strong>Stateful orchestration frameworks</strong> (LangGraph's category): LangGraph (LangChain Inc.); CrewAI (CrewAI Inc.); Microsoft Agent Framework, the successor to AutoGen and Semantic Kernel (Microsoft); Google ADK (Google); LlamaIndex Workflows (LlamaIndex); DSPy (Stanford NLP); Temporal (Temporal Technologies); <strong>ZenML</strong> (ZenML GmbH), a five-year-old open-source MLOps workflow-orchestration engine now repositioned for agent workloads; <strong>Kitaru</strong> (ZenML), a durable-execution runtime and SDK/UI built on top of ZenML specifically to add checkpointing, replay, and cross-harness adapters (Anthropic Agents SDK, OpenAI Agents SDK) to any agent harness without requiring a rewrite.</p>
+<p><strong>Minimal code-first libraries</strong> (smolagents' category): smolagents (Hugging Face); OpenAI Agents SDK (OpenAI); PydanticAI (Pydantic); Vercel AI SDK (Vercel); Agno (Agno AI).</p>
+<p><strong>Managed enterprise runtimes</strong>: AWS Bedrock AgentCore; Microsoft Foundry Agent Service; Gemini Enterprise (Google Cloud); Salesforce Agentforce 360; IBM watsonx Orchestrate; Databricks Agent Bricks; <strong>Anthropic Managed Agents</strong>, model-provider-hosted routines and infrastructure built directly into the harness layer, illustrating the model-coupled path described in §2.6.</p>
+<p><strong>Open, commoditizing foundation models</strong> (relevant to the build/buy/compose economics in Ch 27, not a harness category in its own right): open-weight models such as GLM (Zhipu AI), Kimi (Moonshot AI), MiniMax, and Mistral have closed much of the capability gap with proprietary frontier models — one widely cited mid-2026 comparison put a recent open model at roughly 95% of a leading proprietary model's benchmark performance. As this gap narrows, the commercial argument in §1 and §32 sharpens further: if the model increasingly behaves like a commodity input, competitive differentiation and durable value continue to migrate toward the harness, the runtime, and the accumulated operational knowledge built around it — not toward which model is called.</p>
+<p><strong>Sandboxing and execution isolation</strong> (underlying §10.8): E2B, Modal, Daytona, Cloudflare Sandbox SDK, Fly.io Machines — most build on gVisor or Firecracker.</p>
+<p><strong>Evaluation and observability</strong> (underlying Ch 20–21): LangSmith, Langfuse (now part of ClickHouse), Braintrust, W&amp;B Weave, Arize Phoenix, TruLens (now maintained by Snowflake).</p>
+<p><strong>Open standards and protocols.</strong> The most consequential trend for harness engineering through 2025–2026 is standards convergence: MCP, A2A (Agent2Agent), and AGNTCY have each moved to multi-vendor Linux Foundation governance, with AWS, Google, Microsoft, Cisco, IBM, SAP, ServiceNow, and Salesforce co-governing. This is the clearest signal yet that tool-calling and agent-to-agent interoperability are consolidating around shared, vendor-neutral contracts rather than fragmenting — directly reinforcing the governing principle in §6.1 (the model is not the system) and the recommended positioning in §7.2 (harness contracts should be stable and framework-independent).</p>
+<p>A parallel consolidation is underway among frameworks themselves: Microsoft is folding both AutoGen and Semantic Kernel into Microsoft Agent Framework, and OpenAI's Assistants API is being retired in favour of the Responses API. Treat any framework choice as provisional and keep the harness contracts in §7.2 the stable layer, not the framework API surface.</p>
+<hr/>
+<h2 id="ch-8-autonomy-levels-a0-a5">8. Autonomy Levels (A0–A5)</h2>
+<p>Autonomy is earned through evidence, controls, and operating maturity — not granted by model capability. This scale is orthogonal to, and composable with, the Cybage L1–L5 maturity model (see Ch 30).</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Level</th>
+<th scope="col">Description</th>
+<th scope="col">Permitted behaviour</th>
+<th scope="col">Typical use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Level">A0 – Advisory</td>
+<td data-label="Description">Produces analysis or recommendation only</td>
+<td data-label="Permitted behaviour">No external side effects</td>
+<td data-label="Typical use">Strategy, review, explanation</td>
+</tr>
+<tr>
+<td data-label="Level">A1 – Drafting</td>
+<td data-label="Description">Creates proposed artifacts in isolated storage</td>
+<td data-label="Permitted behaviour">No system-of-record change</td>
+<td data-label="Typical use">Code drafts, emails, plans, SQL drafts</td>
+</tr>
+<tr>
+<td data-label="Level">A2 – Supervised action</td>
+<td data-label="Description">Executes actions after per-action approval</td>
+<td data-label="Permitted behaviour">Bounded writes with human confirmation</td>
+<td data-label="Typical use">Ticket updates, pull requests, test execution</td>
+</tr>
+<tr>
+<td data-label="Level">A3 – Policy-bounded autonomy</td>
+<td data-label="Description">Executes approved classes of actions automatically</td>
+<td data-label="Permitted behaviour">Reversible actions within defined scope</td>
+<td data-label="Typical use">Dependency updates, non-production remediation</td>
+</tr>
+<tr>
+<td data-label="Level">A4 – Monitored autonomy</td>
+<td data-label="Description">Runs long-lived workflows with exception-based supervision</td>
+<td data-label="Permitted behaviour">Significant but controlled operations</td>
+<td data-label="Typical use">Production operations with strong guardrails</td>
+</tr>
+<tr>
+<td data-label="Level">A5 – Delegated authority</td>
+<td data-label="Description">Acts on business outcomes under formal authority</td>
+<td data-label="Permitted behaviour">High-impact actions</td>
+<td data-label="Typical use">Rare; requires mature controls and domain-specific governance</td>
+</tr>
+</tbody>
+</table></div>
+<p>An agent should not be assigned a higher autonomy level merely because the model appears capable. Autonomy must be earned through evidence, controls, and operating maturity (see Ch 20 for the evaluation basis, Ch 22 for the production readiness gate).</p>
+<hr/>
+<h1 data-part="true" id="part-iii">PART III — HOW</h1>
+<h2 id="part-iii-tldr">Part III TL;DR</h2>
+<blockquote>
+<p>An enterprise-grade harness is a layered system: intake → control plane → runtime → tool plane + execution plane → state/evidence → observability. Each layer has explicit, versioned contracts. Tools are narrow, typed, and idempotent; state is typed and durable; sandboxes are deny-by-default; policy is external to the model; every consequential action produces evidence. AI-assisted coding and HTML generation are treated as production software — with mandatory inspect → plan → change → verify → evidence sequences. Design patterns (deterministic shell, plan-execute-verify, capability tokens, read-plan-write separation) are as important as component design. Twelve anti-patterns must be actively prevented.</p>
+</blockquote>
+<hr/>
+<h2 id="ch-9-reference-architecture">9. Reference Architecture</h2>
+<figure aria-labelledby="arch-svg-title" class="arch-diagram">
+<svg aria-labelledby="arch-svg-title arch-svg-desc" role="img" tabindex="0" viewbox="0 0 860 900" xmlns="http://www.w3.org/2000/svg">
+<title id="arch-svg-title">Harness reference architecture: seven layers from human/API entry through the control plane, runtime, tool and execution planes, state and evidence stores, to observability.</title>
+<desc id="arch-svg-desc">A vertical flow diagram. Layer 1: Human, API, Event, Scheduler, or External Agent. Arrow down to Layer 2: Experience and Task Intake Layer, containing UI/CLI/API/Webhook/IDE, authentication, intent capture, and task contract validation. Arrow down to Layer 3: Harness Control Plane, containing agent registry and versions, policy and permission engine, model routing and budget policy, tool registry and capability grants, workflow definitions, tenant and environment configuration, and release and feature controls. Arrow down to Layer 4: Agent Runtime and Orchestration Plane, containing context assembly, planner/router/graph engine, state transitions, tool-call loop, human interrupts, retry/timeout/cancellation/compensation, and completion and escalation evaluation. Two arrows down to Layer 5, split into two side-by-side boxes: Tool and Integration Plane (business APIs, repository services, data and search, ticketing and collaboration, deployment and operations, browser and UI automation) and Execution Plane (ephemeral sandbox, container/VM/WASM, filesystem controls, network egress controls, resource quotas, artifact capture). Both converge with an arrow down to Layer 6: State, Memory, Evidence, and Knowledge, containing run state and checkpoints, long-term memory, domain knowledge, audit events, artifacts and diffs, and evaluation outcomes. Arrow down to Layer 7: Observability, Evaluation, Security, and Operations, containing traces/metrics/logs/costs, quality and safety evaluation, threat detection and policy violations, and SLOs/incident response/replay/forensics.</desc>
+<defs>
+<marker id="arch-arrow" markerheight="7" markerwidth="7" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path class="arch-arrowhead" d="M0,0 L10,5 L0,10 z"></path>
+</marker>
+</defs>
+<!-- Layer 1 -->
+<rect class="arch-box arch-box-io" height="50" rx="8" width="780" x="40" y="10"></rect>
+<text class="arch-title" text-anchor="middle" x="430" y="40">Human · API · Event · Scheduler · External Agent</text>
+<line class="arch-line" marker-end="url(#arch-arrow)" x1="430" x2="430" y1="60" y2="90"></line>
+<!-- Layer 2 -->
+<rect class="arch-box arch-box-intake" height="100" rx="8" width="780" x="40" y="92"></rect>
+<text class="arch-title" text-anchor="middle" x="430" y="114">Experience &amp; Task Intake Layer</text>
+<text class="arch-item" text-anchor="middle" x="430" y="136">UI / CLI / API / Webhook / IDE · Authentication</text>
+<text class="arch-item" text-anchor="middle" x="430" y="156">Intent capture · Task contract validation</text>
+<line class="arch-line" marker-end="url(#arch-arrow)" x1="430" x2="430" y1="192" y2="222"></line>
+<!-- Layer 3 -->
+<rect class="arch-box arch-box-control" height="128" rx="8" width="780" x="40" y="224"></rect>
+<text class="arch-title" text-anchor="middle" x="430" y="246">Harness Control Plane</text>
+<text class="arch-item" text-anchor="middle" x="430" y="268">Agent registry &amp; versions · Policy &amp; permission engine · Model routing &amp; budget policy</text>
+<text class="arch-item" text-anchor="middle" x="430" y="288">Tool registry &amp; capability grants · Workflow definitions</text>
+<text class="arch-item" text-anchor="middle" x="430" y="308">Tenant &amp; environment configuration · Release &amp; feature controls</text>
+<line class="arch-line" marker-end="url(#arch-arrow)" x1="430" x2="430" y1="352" y2="382"></line>
+<!-- Layer 4 -->
+<rect class="arch-box arch-box-runtime" height="128" rx="8" width="780" x="40" y="384"></rect>
+<text class="arch-title" text-anchor="middle" x="430" y="406">Agent Runtime / Orchestration Plane</text>
+<text class="arch-item" text-anchor="middle" x="430" y="428">Context assembly · Planner / router / graph engine · State transitions</text>
+<text class="arch-item" text-anchor="middle" x="430" y="448">Tool-call loop · Human interrupts</text>
+<text class="arch-item" text-anchor="middle" x="430" y="468">Retry, timeout, cancellation, compensation · Completion &amp; escalation evaluation</text>
+<line class="arch-line" marker-end="url(#arch-arrow)" x1="250" x2="250" y1="512" y2="542"></line>
+<line class="arch-line" marker-end="url(#arch-arrow)" x1="610" x2="610" y1="512" y2="542"></line>
+<!-- Layer 5: split -->
+<rect class="arch-box arch-box-tool" height="150" rx="8" width="370" x="40" y="544"></rect>
+<text class="arch-title" text-anchor="middle" x="225" y="566">Tool &amp; Integration Plane</text>
+<text class="arch-item" text-anchor="middle" x="225" y="588">Business APIs</text>
+<text class="arch-item" text-anchor="middle" x="225" y="606">Repository services</text>
+<text class="arch-item" text-anchor="middle" x="225" y="624">Data &amp; search</text>
+<text class="arch-item" text-anchor="middle" x="225" y="642">Ticketing &amp; collaboration</text>
+<text class="arch-item" text-anchor="middle" x="225" y="660">Deployment &amp; operations · Browser/UI automation</text>
+<rect class="arch-box arch-box-exec" height="150" rx="8" width="370" x="450" y="544"></rect>
+<text class="arch-title" text-anchor="middle" x="635" y="566">Execution Plane</text>
+<text class="arch-item" text-anchor="middle" x="635" y="588">Ephemeral sandbox</text>
+<text class="arch-item" text-anchor="middle" x="635" y="606">Container / VM / WASM</text>
+<text class="arch-item" text-anchor="middle" x="635" y="624">Filesystem &amp; network egress controls</text>
+<text class="arch-item" text-anchor="middle" x="635" y="642">Resource quotas</text>
+<text class="arch-item" text-anchor="middle" x="635" y="660">Artifact capture</text>
+<line class="arch-line" x1="225" x2="430" y1="694" y2="722"></line>
+<line class="arch-line" marker-end="url(#arch-arrow)" x1="635" x2="430" y1="694" y2="722"></line>
+<!-- Layer 6 -->
+<rect class="arch-box arch-box-state" height="80" rx="8" width="780" x="40" y="724"></rect>
+<text class="arch-title" text-anchor="middle" x="430" y="746">State, Memory, Evidence &amp; Knowledge</text>
+<text class="arch-item" text-anchor="middle" x="430" y="768">Run state &amp; checkpoints · Long-term memory · Domain knowledge</text>
+<text class="arch-item" text-anchor="middle" x="430" y="788">Audit events · Artifacts &amp; diffs · Evaluation outcomes</text>
+<line class="arch-line" marker-end="url(#arch-arrow)" x1="430" x2="430" y1="804" y2="834"></line>
+<!-- Layer 7 -->
+<rect class="arch-box arch-box-obs" height="56" rx="8" width="780" x="40" y="836"></rect>
+<text class="arch-title" text-anchor="middle" x="430" y="858">Observability, Evaluation, Security &amp; Operations</text>
+<text class="arch-item" text-anchor="middle" x="430" y="878">Traces/metrics/logs/costs · Quality &amp; safety evaluation · Threat detection · SLOs &amp; incident response</text>
+</svg>
+<figcaption>
+<button aria-expanded="false" class="ascii-toggle" data-target="arch-ascii-fallback" type="button">View as text</button>
+</figcaption>
+<pre class="ascii-fallback hidden" id="arch-ascii-fallback" tabindex="-1"><code>+-----------------------------------------------------------------------+
+| Human, API, Event, Scheduler, External Agent                          |
++----------------------------------+------------------------------------+
+                                   |
+                                   v
++-----------------------------------------------------------------------+
+| Experience and Task Intake Layer                                     |
+| - UI / CLI / API / Webhook / IDE                                     |
+| - Authentication                                                     |
+| - Intent capture                                                     |
+| - Task contract validation                                           |
++----------------------------------+------------------------------------+
+                                   |
+                                   v
++-----------------------------------------------------------------------+
+| Harness Control Plane                                                 |
+| - Agent registry and versions                                        |
+| - Policy and permission engine                                       |
+| - Model routing and budget policy                                    |
+| - Tool registry and capability grants                                |
+| - Workflow definitions                                               |
+| - Tenant and environment configuration                               |
+| - Release and feature controls                                       |
++----------------------------------+------------------------------------+
+                                   |
+                                   v
++-----------------------------------------------------------------------+
+| Agent Runtime / Orchestration Plane                                  |
+| - Context assembly                                                   |
+| - Planner / router / graph engine                                    |
+| - State transitions                                                  |
+| - Tool-call loop                                                     |
+| - Human interrupts                                                   |
+| - Retry, timeout, cancellation, compensation                          |
+| - Completion and escalation evaluation                               |
++----------------------+--------------------+---------------------------+
+                       |                    |
+                       v                    v
++--------------------------------+  +-----------------------------------+
+| Tool and Integration Plane     |  | Execution Plane                   |
+| - Business APIs                |  | - Ephemeral sandbox               |
+| - Repository services          |  | - Container / VM / WASM           |
+| - Data and search              |  | - Filesystem controls             |
+| - Ticketing and collaboration  |  | - Network egress controls         |
+| - Deployment and operations    |  | - Resource quotas                 |
+| - Browser and UI automation    |  | - Artifact capture                |
++--------------------------------+  +-----------------------------------+
+                       |                    |
+                       +---------+----------+
+                                 |
+                                 v
++-----------------------------------------------------------------------+
+| State, Memory, Evidence, and Knowledge                                |
+| - Run state and checkpoints                                          |
+| - Long-term memory                                                   |
+| - Domain knowledge                                                   |
+| - Audit events                                                       |
+| - Artifacts and diffs                                                |
+| - Evaluation outcomes                                                |
++----------------------------------+------------------------------------+
+                                   |
+                                   v
++-----------------------------------------------------------------------+
+| Observability, Evaluation, Security, and Operations                   |
+| - Traces, metrics, logs, costs                                       |
+| - Quality and safety evaluation                                      |
+| - Threat detection and policy violations                             |
+| - SLOs, incident response, replay, forensics                          |
++-----------------------------------------------------------------------+
+</code></pre>
+</figure>
+
+<hr/>
+<h2 id="ch-10-logical-components">10. Logical Components</h2>
+<h3 id="ch-10-1-task-intake-service">10.1 Task intake service</h3>
+<p>The task intake service must transform a human or system request into a validated task contract.</p>
+<p>A task contract should contain:</p>
+<pre><code class="language-yaml">task_id: "uuid"
+initiator:
+  type: "human|system|agent"
+  identity: "principal-id"
+tenant_id: "tenant-id"
+objective: "Required outcome"
+inputs:
+  references: []
+constraints:
+  deadline: null
+  max_cost: 10.00
+  max_steps: 50
+  allowed_data_classes: ["internal"]
+  allowed_environments: ["development"]
+required_evidence:
+  - "change_diff"
+  - "test_results"
+approval_policy: "engineering-standard"
+completion_criteria:
+  - "all_acceptance_tests_pass"
+</code></pre>
+<p>The task contract must be immutable once execution starts, except through a versioned amendment event.</p>
+<h3 id="ch-10-2-agent-registry">10.2 Agent registry</h3>
+<p>The registry must store: agent identifier; purpose; owner; version; status; model policy; prompt/instruction version; workflow version; allowed tools; default budgets; risk class; required approvals; evaluation suite; supported tenant and environment scope; deployment history.</p>
+<p>No agent version should execute in production unless it is registered and approved.</p>
+<h3 id="ch-10-3-model-gateway">10.3 Model gateway</h3>
+<p>The model gateway must abstract provider-specific APIs and centralise: authentication; provider selection; model allowlists; failover; regional routing; token and cost accounting; rate limits; prompt and response logging policy; data-retention options; content filtering; caching where safe; model health and latency; model version pinning; structured output enforcement.</p>
+<p>Model selection should be policy-based rather than embedded throughout business code.</p>
+<p>Example routing policy:</p>
+<pre><code class="language-yaml">routes:
+  - task_class: "code_review"
+    models: ["high-reasoning-primary", "high-reasoning-fallback"]
+    max_input_tokens: 180000
+    temperature: 0
+  - task_class: "classification"
+    models: ["small-low-latency"]
+    max_cost_per_call: 0.01
+  - task_class: "sensitive-data"
+    providers: ["private-region-provider"]
+</code></pre>
+<h3 id="ch-10-4-context-assembler">10.4 Context assembler</h3>
+<p>The context assembler is responsible for producing the smallest sufficient context for each agent step.</p>
+<p>It should combine: system and policy instructions; current task contract; active workflow state; relevant short-term history; selected long-term memory; repository or business knowledge; tool definitions; examples; environment observations; prior errors; cost and step budget; required output schema.</p>
+<p>Context assembly must be traceable. The harness should record which sources were selected and why.</p>
+<p><strong>Context priority order.</strong> (1) Non-overridable safety and policy controls; (2) task contract and completion criteria; (3) current state and pending decision; (4) tool contracts and environment facts; (5) domain and repository knowledge; (6) relevant examples; (7) prior conversational history.</p>
+<p><strong>Context controls.</strong> Maximum token budget; source-level access control; relevance threshold; freshness requirements; deduplication; prompt-injection scanning; sensitive-data redaction; provenance metadata; compaction policy; conflict detection.</p>
+<h3 id="ch-10-5-planner-and-router">10.5 Planner and router</h3>
+<p>The planner determines the intended sequence or decomposition of work. The router chooses the next state, tool, model, sub-agent, approval, or terminal action.</p>
+<p>Planning may be: fixed and deterministic; model-generated but validated; graph-based; hierarchical; event-driven; or hybrid.</p>
+<p>High-risk tasks should use constrained or validated plans rather than unconstrained free-form planning.</p>
+<p>A plan should include:</p>
+<pre><code class="language-json">{
+  "goal": "Implement accessible dark mode",
+  "steps": [
+    {
+      "id": "inspect",
+      "action": "repository.inspect",
+      "expected_evidence": ["affected_files"]
+    },
+    {
+      "id": "change",
+      "action": "repository.patch",
+      "depends_on": ["inspect"],
+      "expected_evidence": ["diff"]
+    },
+    {
+      "id": "validate",
+      "action": "test.run",
+      "depends_on": ["change"],
+      "expected_evidence": ["test_report", "accessibility_report"]
+    }
+  ],
+  "rollback": "discard_branch"
+}
+</code></pre>
+<h3 id="ch-10-6-workflow-engine">10.6 Workflow engine</h3>
+<p>The workflow engine must support: explicit states; conditional transitions; cycles; parallel steps; joins; retries; timeouts; scheduled waits; human interrupts; cancellation; compensation; child workflows; durable checkpoints; replay; versioned workflow definitions.</p>
+<p>State transitions must be append-only events or otherwise reconstructable.</p>
+<p><strong>Dynamic graphs, not static DAGs.</strong> Earlier workflow orchestration (including the pipeline-orchestration systems this specification's patterns descend from) assumed the graph was known and compiled ahead of time: load data, preprocess, train, evaluate — a directed <em>acyclic</em> graph whose shape does not change at runtime. An agent's execution trace is also a graph — a sequence of LLM calls and tool calls, sometimes combined — but the shape of that graph is decided step by step, by the model, while it runs, and it routinely cycles back on itself (retry, repair, re-plan). The workflow engine must therefore support graphs that are <em>unrolled dynamically at execution time</em> rather than only graphs compiled in advance; this is a structural requirement, not a minor variation, and it is the specific engineering problem that separates an agent workflow engine from a traditional data-pipeline DAG engine.</p>
+<p><strong>Mid-flight version pinning.</strong> Long-running tasks create a scenario traditional request-response systems never had to resolve: if a task has been running for an extended period — hours, days, or longer — and the underlying agent, workflow, or prompt version is updated while that task is still in flight, which version should the remainder of the task use? The harness must resolve this deliberately, not by accident of deployment timing. The correct default, consistent with §6.8 (state must be explicit) and the agent registry's version binding (§10.2), is that <strong>an in-flight task remains pinned to the agent, workflow, and prompt versions that were active when it started</strong>, and only picks up a newer version on its next fresh invocation. Silently migrating a running task onto new logic mid-execution makes the task's behaviour unreproducible and its evidence trail meaningless — the harness cannot claim a run's evidence corresponds to a specific, auditable version if the version changed underneath it while it ran.</p>
+<h3 id="ch-10-7-tool-registry">10.7 Tool registry</h3>
+<p>Every tool must have a machine-readable contract.</p>
+<p>Minimum tool metadata:</p>
+<pre><code class="language-yaml">name: "repository.apply_patch"
+version: "2.1.0"
+description: "Apply a validated patch to an isolated branch"
+risk_level: "medium"
+input_schema: {}
+output_schema: {}
+required_scopes:
+  - "repo:write"
+side_effects:
+  - "source_code_change"
+idempotency: "idempotency-key-supported"
+timeout_seconds: 30
+retry_policy: "safe-on-network-failure"
+approval:
+  required_when:
+    - "target_branch == 'main'"
+audit_fields:
+  - "repository"
+  - "branch"
+  - "commit_sha"
+</code></pre>
+<p><strong>Tool design requirements.</strong> Use narrow, purpose-specific tools. Validate all inputs against a schema. Return structured outputs. Distinguish read operations from write operations. Declare side effects. Support idempotency where possible. Define retry safety. Enforce authorization outside the model. Produce evidence. Avoid returning excessive unstructured content. Version breaking changes. Include simulated and test implementations.</p>
+<h3 id="ch-10-8-sandbox-manager">10.8 Sandbox manager</h3>
+<p>The sandbox manager must provision isolated execution environments.</p>
+<p><strong>Supported isolation levels.</strong> Process isolation; container isolation; microVM isolation; virtual machine isolation; WebAssembly isolation; disposable cloud workspaces; isolated browser sessions.</p>
+<p><strong>Minimum controls.</strong> Ephemeral filesystem; read-only base image; mounted workspace with explicit permissions; CPU, memory, process, and storage quotas; execution timeout; network deny-by-default; destination allowlist; secret injection at runtime; secret masking; package installation policy; malware and artifact scanning; output size limits; command audit; environment teardown; artifact retention policy.</p>
+<h3 id="ch-10-9-state-and-persistence-layer">10.9 State and persistence layer</h3>
+<p>State must be separated into distinct classes.</p>
+<ul>
+<li><strong>Run state.</strong> The exact execution state of the current task, including current node, pending action, step count, budget, errors, and outputs.</li>
+<li><strong>Checkpoints.</strong> Recoverable snapshots used to resume, inspect, branch, or rewind execution.</li>
+<li><strong>Working memory.</strong> Short-lived information needed during the current task.</li>
+<li><strong>Long-term memory.</strong> Durable information that may influence future tasks, such as user preferences, repository conventions, or confirmed domain facts.</li>
+<li><strong>Knowledge.</strong> Curated, authoritative content retrieved by the agent but not written automatically into memory.</li>
+<li><strong>Evidence store.</strong> Immutable or tamper-evident records of actions, outputs, diffs, test reports, approvals, and decisions.</li>
+<li><strong>Artifact store.</strong> Generated files, code packages, reports, screenshots, logs, and build outputs.</li>
+</ul>
+<p>Memory writes must be explicit, validated, attributable, scoped, and reversible. A model must not silently convert arbitrary conversation content into durable memory.</p>
+<h3 id="ch-10-10-policy-engine">10.10 Policy engine</h3>
+<p>The policy engine must evaluate every consequential action.</p>
+<p><strong>Policy inputs.</strong> Initiator identity; tenant; agent version; task risk; data classification; environment; tool; requested arguments; estimated cost; target resource; time; prior actions; approval state; anomaly signals.</p>
+<p><strong>Policy outcomes.</strong> Allow; deny; allow with constraints; require approval; require additional evidence; substitute safer tool; reduce permissions; terminate task.</p>
+<p>Policy rules must not be implemented only in prompts.</p>
+<h3 id="ch-10-11-human-control-service">10.11 Human control service</h3>
+<p>Human-in-the-loop (HIL) should be designed as a first-class workflow state, not an exception.</p>
+<p><strong>Supported actions.</strong> Approve; reject; edit proposed inputs; provide missing information; choose among options; reduce or expand scope; resume; cancel; roll back; escalate.</p>
+<p><strong>Approval screens must show.</strong> Requested action; reason; affected resources; proposed change; risk classification; policy result; evidence; cost incurred and estimated remaining cost; rollback method.</p>
+<h3 id="ch-10-12-evidence-service">10.12 Evidence service</h3>
+<p>The evidence service should normalise: prompts and model responses where retention is permitted; tool calls; command output; source diffs; test results; security scans; screenshots; browser traces; deployment results; approval records; external API receipts; generated documents; final completion rationale.</p>
+<p>Evidence must have timestamps, run identifiers, step identifiers, checksums, provenance, and retention classification.</p>
+<h3 id="ch-10-13-observability-service">10.13 Observability service</h3>
+<p>Agent observability must cover more than conventional application telemetry.</p>
+<p><strong>Required dimensions.</strong> Task success; completion criteria met; step count; model calls; model latency; tool latency; token usage; cost; retries; loop detection; approval wait time; human intervention rate; tool-selection accuracy; policy denials; sandbox failures; hallucinated tool attempts; context size; context source utilisation; output validation failure; rollback rate; customer-visible error rate.</p>
+<p><em>(Full metrics catalog appears in Ch 21.)</em></p>
+<hr/>
+<h2 id="ch-11-execution-lifecycle">11. Execution Lifecycle</h2>
+<p>A standard harness run should follow this fourteen-step lifecycle.</p>
+<ol>
+<li><strong>Authenticate and identify.</strong> Resolve the human, service, or external agent identity and tenant context.</li>
+<li><strong>Validate task contract.</strong> Ensure the objective, inputs, constraints, completion criteria, and required evidence are present.</li>
+<li><strong>Classify task and risk.</strong> Determine data sensitivity, action risk, autonomy level, environment, and policy requirements.</li>
+<li><strong>Select agent and workflow version.</strong> Bind execution to immutable agent, policy, tool, workflow, prompt, and evaluation versions.</li>
+<li><strong>Allocate capability grant.</strong> Issue a short-lived capability set containing only the allowed tools, data, network destinations, and environments.</li>
+<li><strong>Create sandbox and state.</strong> Provision an isolated workspace and initialise durable run state.</li>
+<li><strong>Assemble context.</strong> Retrieve only relevant, authorised, and fresh context.</li>
+<li><strong>Plan or enter graph.</strong> Generate or load the execution plan and validate it against policy and task constraints.</li>
+<li><strong>Execute one bounded step.</strong> The agent proposes an action. The harness validates and invokes the tool.</li>
+<li><strong>Capture observation and evidence.</strong> Store tool outputs, state changes, cost, and artifacts.</li>
+<li><strong>Evaluate continuation.</strong> Determine whether to continue, retry, repair, branch, request approval, escalate, or terminate.</li>
+<li><strong>Verify completion.</strong> Run deterministic acceptance checks and required evaluators.</li>
+<li><strong>Produce outcome package.</strong> Return result, evidence, limitations, residual risks, and recommended follow-up.</li>
+<li><strong>Finalise and retain.</strong> Close the sandbox, revoke credentials, store permitted memory, apply retention policies, and update operational metrics.</li>
+</ol>
+<hr/>
+<h2 id="ch-12-software-engineering-requirements">12. Software Engineering Requirements</h2>
+<h3 id="ch-12-1-architecture">12.1 Architecture</h3>
+<p>The harness must use modular boundaries with explicit contracts between: model gateway; orchestration; state; tools; policy; sandbox; evidence; evaluation; and user experience. Framework-specific objects must not leak across all product layers.</p>
+<h3 id="ch-12-2-repository-structure">12.2 Repository structure</h3>
+<p>A recommended repository structure is:</p>
+<pre><code class="language-text">/harness
+  /apps
+    /control-api
+    /operator-ui
+    /developer-cli
+  /packages
+    /agent-runtime
+    /workflow-engine
+    /model-gateway
+    /context-engine
+    /tool-sdk
+    /policy-client
+    /evidence-sdk
+    /evaluation-sdk
+    /shared-contracts
+  /agents
+    /coding-agent
+      agent.yaml
+      instructions.md
+      workflow.yaml
+      tools.yaml
+      evals/
+  /tools
+    /repository-read
+    /repository-write
+    /test-runner
+  /policies
+  /schemas
+  /sandboxes
+  /examples
+  /docs
+  /tests
+    /unit
+    /contract
+    /integration
+    /security
+    /evaluation
+    /replay
+</code></pre>
+<h3 id="ch-12-3-api-contracts">12.3 API contracts</h3>
+<p>All service and tool APIs must: use versioned schemas; validate input and output; define error classes; define idempotency behaviour; propagate correlation identifiers; support deadlines and cancellation; avoid ambiguous free-form return values where structured data is possible; provide backward compatibility policy.</p>
+<h3 id="ch-12-4-typed-state">12.4 Typed state</h3>
+<p>Agent state should be represented in typed schemas.</p>
+<pre><code class="language-typescript">export interface CodingRunState {
+  taskId: string;
+  phase: "inspect" | "plan" | "modify" | "test" | "review" | "complete";
+  repository: {
+    url: string;
+    baseRevision: string;
+    workingBranch: string;
+  };
+  affectedFiles: string[];
+  plan?: ChangePlan;
+  testResults: TestResult[];
+  risks: RiskFinding[];
+  budget: {
+    maxSteps: number;
+    usedSteps: number;
+    maxCostUsd: number;
+    usedCostUsd: number;
+  };
+}
+</code></pre>
+<p>Do not store critical run state only as chat messages.</p>
+<h3 id="ch-12-5-error-taxonomy">12.5 Error taxonomy</h3>
+<p>The platform must distinguish: invalid task; policy denial; authentication failure; authorisation failure; unavailable model; malformed model output; hallucinated tool; invalid tool arguments; tool business error; transient integration failure; sandbox failure; timeout; budget exhausted; loop detected; output verification failure; human rejection; cancellation; irrecoverable state corruption.</p>
+<p>Each error class must define retry, escalation, and evidence behaviour.</p>
+<h3 id="ch-12-6-idempotency-and-side-effects">12.6 Idempotency and side effects</h3>
+<p>Every write tool must document whether it is: naturally idempotent; idempotent with a key; safe to retry before acknowledgement; unsafe to retry; compensatable; irreversible. The harness must not automatically retry unsafe operations.</p>
+<h3 id="ch-12-7-concurrency">12.7 Concurrency</h3>
+<p>State updates must use optimistic concurrency, version checks, leases, or workflow-engine guarantees to prevent duplicate or conflicting execution.</p>
+<h3 id="ch-12-8-configuration-management">12.8 Configuration management</h3>
+<p>The following must be version-controlled: agent definitions; instructions; prompts; tool schemas; model routing rules; workflows; policy bundles; sandbox images; evaluation datasets; thresholds; UI approval templates. Production configuration changes must pass review and automated validation.</p>
+<hr/>
+<h2 id="ch-13-ai-assisted-coding-specification">13. AI-Assisted Coding Specification</h2>
+<p>This chapter defines the minimum standard for using any AI tool to create or modify software.</p>
+<h3 id="ch-13-1-mandatory-operating-sequence">13.1 Mandatory operating sequence</h3>
+<p>An AI coding agent must follow this sequence:</p>
+<ol>
+<li>Understand the task and acceptance criteria.</li>
+<li>Inspect the repository before proposing changes.</li>
+<li>Identify applicable instructions and architectural constraints.</li>
+<li>Establish a baseline by running relevant existing tests.</li>
+<li>Produce a bounded change plan.</li>
+<li>Modify only necessary files.</li>
+<li>Add or update tests.</li>
+<li>Run formatting, linting, type checks, unit tests, integration tests, and security checks as applicable.</li>
+<li>Inspect the final diff.</li>
+<li>Report evidence, limitations, and residual risks.</li>
+</ol>
+<p>The agent must not claim successful completion without executing verification appropriate to the change.</p>
+<h3 id="ch-13-2-repository-instructions">13.2 Repository instructions</h3>
+<p>Every AI-enabled repository should include a concise machine-readable instruction hierarchy.</p>
+<pre><code class="language-text">/AGENTS.md                 Global repository rules
+/docs/architecture.md      Architectural boundaries and decisions
+/docs/testing.md           Test strategy and commands
+/docs/security.md          Security and data handling rules
+/docs/ui-standards.md      Frontend and accessibility rules
+/&lt;module&gt;/AGENTS.md        Module-specific instructions
+</code></pre>
+<p>Instructions should define: supported runtime and package manager; build and test commands; code style; architectural boundaries; prohibited dependencies; generated-file rules; security requirements; definition of done; required evidence.</p>
+<h3 id="ch-13-3-change-planning">13.3 Change planning</h3>
+<p>For non-trivial work, the agent must produce an internal or persisted plan containing: current behaviour; desired behaviour; affected components; proposed changes; test changes; migration concerns; compatibility risks; rollback approach. Plans must be revised when repository evidence contradicts assumptions.</p>
+<h3 id="ch-13-4-code-quality-requirements">13.4 Code quality requirements</h3>
+<p>Generated code must: be readable by a human engineer; follow existing project conventions; use clear naming; minimise unnecessary abstraction; avoid dead code; avoid placeholder implementations unless explicitly requested; handle errors deliberately; validate external input; separate business logic from infrastructure logic; avoid hard-coded credentials and environment values; include comments only where intent is not evident; preserve backward compatibility unless a breaking change is approved; include tests for changed behaviour.</p>
+<h3 id="ch-13-5-security-requirements-for-generated-code">13.5 Security requirements for generated code</h3>
+<p>The agent must check for: injection vulnerabilities; insecure deserialisation; path traversal; unsafe command execution; exposed secrets; broken authentication or authorisation; cross-tenant access; excessive permissions; dependency vulnerabilities; sensitive-data logging; insecure temporary files; unrestricted network calls; unsafe HTML rendering; missing CSRF or XSS controls where applicable.</p>
+<h3 id="ch-13-6-test-requirements">13.6 Test requirements</h3>
+<p>At minimum, changed logic should have: positive-path tests; negative-path tests; boundary tests; error-handling tests; regression tests for the reported issue.</p>
+<p>Where applicable, also require: contract tests; integration tests; browser tests; visual tests; accessibility tests; performance tests; security tests; migration tests; chaos or recovery tests.</p>
+<h3 id="ch-13-7-diff-discipline">13.7 Diff discipline</h3>
+<p>The agent must: keep changes scoped; avoid unrelated reformatting; preserve existing comments and behaviour unless intentionally changed; explain deleted logic; identify generated artifacts; avoid changing lockfiles unnecessarily; ensure the final diff corresponds to the task plan.</p>
+<h3 id="ch-13-8-completion-evidence">13.8 Completion evidence</h3>
+<p>A coding task is complete only when the outcome package includes:</p>
+<pre><code class="language-yaml">summary: "What changed"
+files_changed: []
+tests:
+  executed: []
+  passed: []
+  failed: []
+quality_checks: []
+security_checks: []
+known_limitations: []
+residual_risks: []
+rollback: "How to revert"
+</code></pre>
+<hr/>
+<h2 id="ch-14-html-frontend-generation-specification">14. HTML &amp; Frontend Generation Specification</h2>
+<p>AI-generated HTML must be treated as production software, not visual mock-up output. This chapter governs both application HTML and the render of this specification itself (see Appendix D for the render directives specific to this document).</p>
+<h3 id="ch-14-1-functional-requirements">14.1 Functional requirements</h3>
+<p>Generated HTML applications must: be fully navigable; provide working links and controls; avoid dead sections and placeholder actions; show meaningful empty states; validate user input; provide error feedback; preserve state where expected; support keyboard operation; behave correctly at common viewport sizes; avoid console errors; load without missing assets.</p>
+<h3 id="ch-14-2-semantic-html">14.2 Semantic HTML</h3>
+<p>Use native semantic elements where possible: <code>header</code>; <code>nav</code>; <code>main</code>; <code>section</code>; <code>article</code>; <code>aside</code>; <code>footer</code>; <code>button</code> for actions; <code>a</code> for navigation; correctly associated <code>label</code> and form controls; valid heading hierarchy. ARIA should supplement, not replace, correct native semantics.</p>
+<h3 id="ch-14-3-accessibility">14.3 Accessibility</h3>
+<p>Minimum target: <strong>WCAG 2.2 AA</strong> where applicable.</p>
+<p>Requirements: keyboard access for all interactive elements; visible focus indicators; sufficient colour contrast; meaningful alternative text; accessible names for controls; no information conveyed only by colour; form error association; skip navigation where appropriate; reduced-motion support; correct modal focus management; screen-reader understandable status updates.</p>
+<h3 id="ch-14-4-responsive-design">14.4 Responsive design</h3>
+<p>The implementation must be tested at minimum at: 360 px width; 768 px width; 1024 px width; 1440 px width. The design must avoid horizontal scrolling for normal content and preserve primary actions on small screens.</p>
+<h3 id="ch-14-5-javascript-engineering">14.5 JavaScript engineering</h3>
+<p>Avoid global mutable state. Use event delegation where appropriate. Validate DOM selectors before use. Handle asynchronous errors. Prevent duplicate event binding. Separate data, state, rendering, and event logic. Escape untrusted content. Use <code>textContent</code> rather than <code>innerHTML</code> unless sanitised HTML is explicitly required. Preserve URL and browser history semantics for navigable applications.</p>
+<h3 id="ch-14-6-self-contained-html-requirements">14.6 Self-contained HTML requirements</h3>
+<p>Where the requested deliverable is a self-contained HTML file:</p>
+<ul>
+<li>embed required CSS and JavaScript;</li>
+<li>do not rely on unavailable local assets;</li>
+<li>minimise external CDN dependency;</li>
+<li>provide graceful fallback when an external service is unavailable;</li>
+<li>include seeded sample data sufficient to exercise all screens;</li>
+<li>ensure all navigation works when opened directly from the filesystem, unless a local server is explicitly required;</li>
+<li>clearly state browser or server requirements.</li>
+</ul>
+<h3 id="ch-14-7-frontend-validation">14.7 Frontend validation</h3>
+<p>The agent must validate: HTML syntax; no duplicate IDs; navigation targets; button actions; form submission; search and filter behaviour; theme toggle persistence; responsive layout; keyboard paths; console errors; inaccessible labels; broken images or resources; empty result states; reset and recalculation logic; direct loading and refresh behaviour.</p>
+<h3 id="ch-14-8-visual-design-principles">14.8 Visual design principles</h3>
+<p>Prefer clarity over decoration. Use a consistent spacing and type scale. Maintain clear information hierarchy. Limit competing calls to action. Make system status visible. Distinguish editable, computed, and read-only values. Explain units and calculation assumptions. Use charts only where they improve comprehension. Do not rely on animation to explain core logic.</p>
+<h3 id="ch-14-9-html-test-evidence">14.9 HTML test evidence</h3>
+<p>For interactive HTML, the outcome package should include: tested user journeys; browser or automation method; viewport coverage; console status; accessibility check status; known limitations; screenshots where useful; unresolved defects.</p>
+<hr/>
+<h2 id="ch-15-harness-design-patterns">15. Harness Design Patterns</h2>
+<h3 id="ch-15-1-deterministic-shell-probabilistic-core">15.1 Deterministic shell, probabilistic core</h3>
+<p>Use deterministic software around model reasoning.</p>
+<pre><code class="language-text">Validate input -&gt; Model proposes -&gt; Schema validates -&gt; Policy checks
+-&gt; Tool executes -&gt; Deterministic verifier -&gt; State transition
+</code></pre>
+<p>Best for high-value workflows where interpretation is needed but execution must remain controlled.</p>
+<h3 id="ch-15-2-plan-execute-verify">15.2 Plan-execute-verify</h3>
+<p>Separate planning, action, and verification. Planner decomposes the goal. Executor performs one bounded step at a time. Verifier independently checks evidence and completion. Avoid using the same unconstrained model response as both producer and final authority.</p>
+<h3 id="ch-15-3-graph-with-explicit-repair-loop">15.3 Graph with explicit repair loop</h3>
+<pre><code class="language-text">Implement -&gt; Test -&gt; Pass? -&gt; Complete
+                | No
+                v
+             Diagnose -&gt; Repair -&gt; Test
+</code></pre>
+<p>The loop must include maximum iterations, failure classification, and escalation.</p>
+<h3 id="ch-15-4-approval-gateway">15.4 Approval gateway</h3>
+<p>Place a durable interrupt before high-risk tools.</p>
+<pre><code class="language-text">Proposed action -&gt; Policy -&gt; Approval request -&gt; Human decision -&gt; Execute
+</code></pre>
+<p>The proposed arguments must not change between approval and execution without re-approval.</p>
+<h3 id="ch-15-5-capability-token">15.5 Capability token</h3>
+<p>Issue short-lived, task-scoped capabilities instead of exposing broad credentials. A capability may bind: principal; task; tool; target resource; permitted operation; expiry; budget; environment.</p>
+<h3 id="ch-15-6-read-plan-write-separation">15.6 Read-plan-write separation</h3>
+<p>Use different permission phases: (1) read-only discovery; (2) plan approval or validation; (3) scoped write grant; (4) verification; (5) grant revocation.</p>
+<h3 id="ch-15-7-branch-and-merge-execution">15.7 Branch-and-merge execution</h3>
+<p>For code and configuration changes, isolate work in a branch or workspace. Merge only after tests and policy checks.</p>
+<h3 id="ch-15-8-evidence-first-action">15.8 Evidence-first action</h3>
+<p>Define required evidence before execution. The agent cannot mark a step complete until evidence is attached.</p>
+<h3 id="ch-15-9-model-router">15.9 Model router</h3>
+<p>Use small models for classification and extraction, stronger models for architecture or debugging, and deterministic code for validation.</p>
+<h3 id="ch-15-10-context-firewall">15.10 Context firewall</h3>
+<p>Separate untrusted retrieved content from control instructions. Treat web pages, documents, issue text, and repository comments as data, not as executable instructions.</p>
+<h3 id="ch-15-11-event-sourced-agent-state">15.11 Event-sourced agent state</h3>
+<p>Record each state transition as an event, allowing replay, forensic analysis, and branch comparison.</p>
+<h3 id="ch-15-12-shadow-execution">15.12 Shadow execution</h3>
+<p>Run a new model, prompt, workflow, or policy version in parallel without side effects. Compare its proposed decisions against production behaviour.</p>
+<h3 id="ch-15-13-simulation-tool">15.13 Simulation tool</h3>
+<p>Provide test doubles for every side-effecting tool so evaluation suites can run without changing real systems.</p>
+<h3 id="ch-15-14-circuit-breaker">15.14 Circuit breaker</h3>
+<p>Stop execution when error rate, cost, loop count, latency, or policy violations exceed a threshold.</p>
+<h3 id="ch-15-15-compensating-transaction">15.15 Compensating transaction</h3>
+<p>When true rollback is unavailable, define an explicit action that reverses or neutralises the prior effect.</p>
+<h3 id="ch-15-16-durable-task-queue-mediation">15.16 Durable task-queue mediation</h3>
+<p>At fleet scale, an agent task must never execute synchronously inside the process that received the request. Use a mediated architecture: the entry point (an API or webhook) durably persists the task as an event on a message bus or broker before any execution begins, and a separate, independently scalable worker pool consumes those events and performs the actual agentic loop.</p>
+<p>This separation exists specifically to survive the failure modes that only appear once execution leaves a single machine: a worker process crashing mid-task, the compute underneath a worker being reclaimed, or a network partition between the worker and a dependent service. Because the task was durably persisted before a worker picked it up, a crashed worker's task can be re-queued and resumed — from the last durable checkpoint (§19.5), not from the beginning — by a different worker, without operator intervention and without losing completed work.</p>
+<p>Minimum requirements: the entry point must not execute the agentic loop in-process; the queue/broker must durably persist the event before acknowledging intake; workers must be stateless with respect to the task (all task state lives in the durable store, not in worker memory) so that any worker can resume any task; and the execution environment (sandbox, filesystem) must itself be externally mounted or checkpointed, not local to the worker, so that a worker's death does not destroy in-progress file or command state.</p>
+<h3 id="ch-15-17-companion-trainer-agent">15.17 Companion (trainer) agent</h3>
+<p>A production harness accumulates traces faster than humans can review them. The pattern that closes the improvement loop (Ch 20, Ch 22) at scale is a companion agent — sometimes called a trainer agent — that continuously mines completed production traces for the most expensive-but-successful runs, replays them against checkpoints to test cheaper or faster alternatives (fewer tool calls, a smaller model, a different tool choice), and proposes — or, under appropriate release gates, applies — the resulting optimisation.</p>
+<p>This is a genuine extension of the evidence-first, evaluation-driven posture in §6.9 and Ch 20, not a shortcut around it: a companion agent's proposals must still pass the same release gates (§20.4) as a human-proposed change, and — per §15.12 (shadow execution) — a replayed run with a substituted model or tool is a <em>counterfactual estimate</em>, not a guarantee, because the original trace can never prove what would have happened had a different model been in the loop from the start (see §20.3's replay caveat, extended in this version). Treat a companion agent as a way to generate well-evidenced <em>candidates</em> for improvement at a volume humans cannot match, not as an autonomous authority to promote its own changes to production.</p>
+<hr/>
+<h2 id="ch-16-anti-patterns">16. Anti-Patterns</h2>
+<h3 id="ch-16-1-prompt-only-security">16.1 Prompt-only security</h3>
+<p>Telling the model not to perform an action is not an access control mechanism.</p>
+<h3 id="ch-16-2-one-universal-agent">16.2 One universal agent</h3>
+<p>A single agent with every tool, every data source, and broad permissions creates excessive context, poor tool selection, and unacceptable blast radius.</p>
+<h3 id="ch-16-3-hidden-state-in-conversation-history">16.3 Hidden state in conversation history</h3>
+<p>Important state becomes difficult to validate, migrate, query, or recover.</p>
+<h3 id="ch-16-4-direct-model-to-production-access">16.4 Direct model-to-production access</h3>
+<p>The model must not directly hold persistent production credentials or bypass tool-level policy.</p>
+<h3 id="ch-16-5-automatic-retry-of-side-effects">16.5 Automatic retry of side effects</h3>
+<p>Retries can duplicate payments, tickets, messages, deployments, or database changes.</p>
+<h3 id="ch-16-6-success-by-self-assertion">16.6 Success by self-assertion</h3>
+<p>An agent statement that work is complete is not verification.</p>
+<h3 id="ch-16-7-unbounded-autonomy">16.7 Unbounded autonomy</h3>
+<p>No maximum steps, cost, duration, scope, or tool count creates operational and financial risk.</p>
+<h3 id="ch-16-8-tool-schemas-as-documentation-only">16.8 Tool schemas as documentation only</h3>
+<p>Schemas must be enforced at runtime.</p>
+<h3 id="ch-16-9-framework-lock-in-throughout-the-codebase">16.9 Framework lock-in throughout the codebase</h3>
+<p>Embedding framework-specific message and state objects everywhere makes migration expensive.</p>
+<h3 id="ch-16-10-long-prompts-as-architecture">16.10 Long prompts as architecture</h3>
+<p>A large instruction file cannot replace typed state, tools, policy, workflows, and tests.</p>
+<h3 id="ch-16-11-production-learning-without-release-controls">16.11 Production learning without release controls</h3>
+<p>Self-modifying code or instructions must not be activated directly in production without review, testing, signing, and rollback.</p>
+<h3 id="ch-16-12-evaluating-only-final-answers">16.12 Evaluating only final answers</h3>
+<p>A correct final answer may result from unsafe or expensive intermediate actions. Evaluate trajectories, tool use, policy compliance, and evidence.</p>
+<hr/>
+<h2 id="ch-17-self-extension-self-modification">17. Self-Extension &amp; Self-Modification</h2>
+<p>Minimal extensible harnesses demonstrate that agents can create new tools, extensions, or workflow logic. This is powerful but must be governed.</p>
+<h3 id="ch-17-1-permitted-self-extension-flow">17.1 Permitted self-extension flow</h3>
+<pre><code class="language-text">Need identified
+-&gt; Agent proposes extension specification
+-&gt; Generate code in isolated branch
+-&gt; Compile and test
+-&gt; Static and security analysis
+-&gt; Capability review
+-&gt; Human or policy approval
+-&gt; Package signing
+-&gt; Publish to controlled registry
+-&gt; Deploy to non-production
+-&gt; Evaluation and soak test
+-&gt; Progressive production rollout
+</code></pre>
+<h3 id="ch-17-2-prohibited-behaviour">17.2 Prohibited behaviour</h3>
+<p>An agent must not: silently change its own production policy; grant itself new tools; expand its own permissions; disable audit logging; modify evaluation thresholds; alter approval rules; deploy unreviewed executable code; retain secrets in generated extensions.</p>
+<h3 id="ch-17-3-extension-manifest">17.3 Extension manifest</h3>
+<pre><code class="language-yaml">extension:
+  name: "delete-audit-hook"
+  version: "1.0.0"
+  owner: "platform-team"
+  capabilities:
+    requested:
+      - "filesystem:observe-delete"
+      - "audit:write"
+  network: "none"
+  data_classes: ["internal"]
+  entrypoint: "dist/index.js"
+  checksum: "sha256:..."
+  tests:
+    required_suite: "extension-standard-v2"
+  approvals:
+    - "security"
+    - "platform-owner"
+</code></pre>
+<hr/>
+<h2 id="ch-18-security-architecture">18. Security Architecture</h2>
+<h3 id="ch-18-1-threat-model">18.1 Threat model</h3>
+<p>The harness must account for: prompt injection; indirect prompt injection from retrieved content; malicious tool output; credential theft; cross-tenant data leakage; excessive agency; command injection; package supply-chain attacks; sandbox escape; data exfiltration; model-provider data leakage; poisoned memory; unauthorised self-modification; approval spoofing; audit tampering; replay attacks; denial of wallet through excessive model usage; denial of service through loops or large outputs; malicious external agents; compromised plugins or MCP servers; insecure generated code.</p>
+<h3 id="ch-18-2-identity-model">18.2 Identity model</h3>
+<p>Every run must have: initiating principal; executing agent identity; delegated authority record; tenant; environment; purpose; expiration; correlation identifier. Agents should have service identities separate from human identities.</p>
+<h3 id="ch-18-3-secret-management">18.3 Secret management</h3>
+<p>Store secrets only in an approved secret manager. Inject short-lived credentials at tool execution time. Never include secrets in model context unless strictly unavoidable. Mask secrets in logs and evidence. Bind credentials to the minimum resource and operation. Rotate and revoke credentials automatically. Scan generated output for accidental secrets.</p>
+<h3 id="ch-18-4-network-controls">18.4 Network controls</h3>
+<p>Deny outbound network access by default. Allowlist destinations by tool or task. Proxy and inspect external requests where appropriate. Block link-local, metadata, and internal control-plane endpoints. Apply DNS and IP controls. Record destination, method, and data classification.</p>
+<h3 id="ch-18-5-data-controls">18.5 Data controls</h3>
+<p>Classify data before model use. Route sensitive tasks only to approved models and regions. Apply minimisation and redaction. Preserve source-level access control during retrieval. Prevent one tenant's memory from entering another tenant's context. Apply retention and deletion policies to prompts, traces, and artifacts.</p>
+<h3 id="ch-18-6-supply-chain-controls">18.6 Supply-chain controls</h3>
+<p>Pin dependencies. Use lockfiles. Verify package provenance. Scan packages and images. Restrict runtime package installation. Use signed sandbox images. Maintain software bills of materials. Review agent-generated dependency additions.</p>
+<hr/>
+<h2 id="ch-19-reliability-recovery">19. Reliability &amp; Recovery</h2>
+<h3 id="ch-19-1-reliability-objectives">19.1 Reliability objectives</h3>
+<p>Each agent class must define: availability target; task success target; maximum completion latency; maximum cost; maximum recovery time; acceptable intervention rate; acceptable false action rate; evidence completeness target.</p>
+<h3 id="ch-19-2-durable-execution">19.2 Durable execution</h3>
+<p>Long-running tasks must persist state after every consequential step. Process restarts must not cause loss of completed work or duplicate unsafe actions.</p>
+<h3 id="ch-19-3-retry-policy">19.3 Retry policy</h3>
+<p>Retries must consider: error class; idempotency; side effects; elapsed time; remaining budget; prior attempts; provider health; alternate model or tool availability. Use exponential backoff and jitter for safe transient failures.</p>
+<h3 id="ch-19-4-loop-detection">19.4 Loop detection</h3>
+<p>Detect loops through: repeated tool and argument signatures; repeated state hashes; no-progress counters; repeated error classes; increasing context without new evidence; cost threshold; maximum graph traversals.</p>
+<h3 id="ch-19-5-checkpoint-and-rewind">19.5 Checkpoint and rewind</h3>
+<p>A checkpoint should include: workflow position; typed state; tool results; artifact references; capability grant state; model and prompt versions; policy version; budget usage. Rewinding must create a new branch of execution rather than rewriting history.</p>
+<h3 id="ch-19-6-disaster-recovery">19.6 Disaster recovery</h3>
+<p>The platform must define backup, restore, region recovery, key recovery, and evidence retention procedures for state and artifact stores.</p>
+<hr/>
+<h1 data-part="true" id="part-iv">PART IV — PROVE</h1>
+<h2 id="part-iv-tldr">Part IV TL;DR</h2>
+<blockquote>
+<p>Evaluation is how autonomy is justified. Five evaluation layers — component, task, trajectory, system, human outcome — must all be present before an agent is considered production-ready. Deterministic checks (compile, tests, schema, security scanners) rank above model-based judges. Observability spans nine metric categories, from outcome and autonomy through to context and product. A harness is production-ready only when a twenty-point Definition of Done is complete — not before.</p>
+</blockquote>
+<hr/>
+<h2 id="ch-20-evaluation-engineering">20. Evaluation Engineering</h2>
+<p>Evaluation is the mechanism through which autonomy is justified.</p>
+<h3 id="ch-20-1-evaluation-layers">20.1 Evaluation layers</h3>
+<p><strong>Component evaluation.</strong> Tool schema adherence; retrieval relevance; structured output validity; policy correctness; sandbox isolation; state transitions.</p>
+<p><strong>Task evaluation.</strong> Objective completion; acceptance-test pass rate; factual accuracy; code correctness; evidence completeness.</p>
+<p><strong>Trajectory evaluation.</strong> Correct tool selection; unnecessary step count; unsafe intermediate actions; recovery behaviour; context use; policy compliance.</p>
+<p><strong>System evaluation.</strong> Cost; latency; concurrency; resilience; tenancy isolation; operational recoverability.</p>
+<p><strong>Human outcome evaluation.</strong> Usefulness; trust; review effort; time saved; intervention quality; business outcome.</p>
+<h3 id="ch-20-2-evaluation-dataset">20.2 Evaluation dataset</h3>
+<p>Each production agent should have a versioned suite containing: representative normal tasks; difficult edge cases; ambiguous tasks; malicious inputs; prompt injections; tool failures; partial data; stale data; permission-denied cases; recovery cases; cost stress cases; regression cases from incidents.</p>
+<h3 id="ch-20-3-golden-tasks-and-dynamic-judges">20.3 Golden tasks and dynamic judges</h3>
+<p>Use deterministic checks wherever possible. Model-based judges may supplement but must not be the only quality gate for objective properties.</p>
+<p>Example hierarchy:</p>
+<ol>
+<li>Compile/build result</li>
+<li>Unit and integration tests</li>
+<li>Schema checks</li>
+<li>Security scanners</li>
+<li>Rule-based assertions</li>
+<li>Human rubric</li>
+<li>Model judge</li>
+</ol>
+<p><strong>The counterfactual-replay caveat.</strong> Checkpoint-based replay (§15.11, §19.5) makes it tempting to test "what if" changes by resuming a real production trace from the middle with a different model or tool substituted in. Treat the result as a useful signal, not a controlled experiment: the original trace's later steps were shaped by everything the original model or tool did up to that checkpoint, and a different model dropped in mid-trace did not have the opportunity to reach that checkpoint on its own terms — it may never have arrived at the same state at all. A harness-difference confound applies too: substituting a different model into the same harness changes tool-call conventions and formatting the harness may not handle identically (see §2.6). Mid-trace replay is a legitimate way to generate candidate improvements cheaply and at volume (§15.17), but a candidate found this way must still be validated with a full, from-scratch run through the same release gates (§20.4) as any other proposed change before it is trusted.</p>
+<h3 id="ch-20-4-release-gates">20.4 Release gates</h3>
+<p>A new agent, model, prompt, workflow, or tool version must not be promoted when: critical safety tests regress; task success falls below threshold; cost exceeds policy without approved trade-off; evidence completeness falls; cross-tenant or access-control tests fail; rollback or recovery tests fail.</p>
+<h3 id="ch-20-5-online-evaluation">20.5 Online evaluation</h3>
+<p>Use: shadow runs; canary release; limited tenant rollout; action sampling for human review; anomaly detection; outcome feedback; incident-triggered replay.</p>
+<hr/>
+<h2 id="ch-21-observability-metrics">21. Observability &amp; Metrics</h2>
+<h3 id="ch-21-1-core-metrics">21.1 Core metrics</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Category</th>
+<th scope="col">Metrics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Category">Outcome</td>
+<td data-label="Metrics">Task success, acceptance criteria met, business outcome achieved</td>
+</tr>
+<tr>
+<td data-label="Category">Autonomy</td>
+<td data-label="Metrics">Autonomous completion, intervention rate, approval rate, escalation rate</td>
+</tr>
+<tr>
+<td data-label="Category">Quality</td>
+<td data-label="Metrics">Defect escape, test pass rate, evaluator score, evidence completeness</td>
+</tr>
+<tr>
+<td data-label="Category">Efficiency</td>
+<td data-label="Metrics">Steps per task, tokens per task, model cost, tool cost, duration</td>
+</tr>
+<tr>
+<td data-label="Category">Reliability</td>
+<td data-label="Metrics">Retry rate, timeout rate, recovery success, stuck-run count</td>
+</tr>
+<tr>
+<td data-label="Category">Safety</td>
+<td data-label="Metrics">Policy denials, unsafe proposal rate, secret exposure, injection detection</td>
+</tr>
+<tr>
+<td data-label="Category">Tooling</td>
+<td data-label="Metrics">Tool success, malformed arguments, idempotency conflicts, latency</td>
+</tr>
+<tr>
+<td data-label="Category">Context</td>
+<td data-label="Metrics">Context tokens, retrieval precision, stale-source use, compaction frequency</td>
+</tr>
+<tr>
+<td data-label="Category">Product</td>
+<td data-label="Metrics">Active users, delegated tasks, repeat use, customer override rate</td>
+</tr>
+</tbody>
+</table></div>
+<p>These map cleanly to the Cybage <em>Five-Index Measurement Framework</em> (Adoption, Utilization, Quality, Velocity, Outcome) — see companion PoV document.</p>
+<h3 id="ch-21-2-trace-structure">21.2 Trace structure</h3>
+<p>A trace should link:</p>
+<pre><code class="language-text">Tenant -&gt; User -&gt; Task -&gt; Run -&gt; Workflow state -&gt; Model call
+-&gt; Tool call -&gt; Sandbox command -&gt; Artifact -&gt; Evaluation -&gt; Approval -&gt; Outcome
+</code></pre>
+<h3 id="ch-21-3-slo-examples">21.3 SLO examples</h3>
+<ul>
+<li>99.9% control-plane availability;</li>
+<li>99% of accepted low-risk tasks complete without platform error;</li>
+<li>100% of production write actions have audit evidence;</li>
+<li>100% of cross-tenant isolation tests pass;</li>
+<li>95% of interactive tasks return first progress within 3 seconds;</li>
+<li>99% of cancelled tasks revoke capabilities within 60 seconds.</li>
+</ul>
+<hr/>
+<h2 id="ch-22-definition-of-done-for-a-production-harness">22. Definition of Done for a Production Harness</h2>
+<p>A harness is production-ready only when:</p>
+<ul>
+<li>architecture and trust boundaries are documented;</li>
+<li>all tools have typed and versioned contracts;</li>
+<li>write actions are policy-controlled;</li>
+<li>execution is sandboxed where arbitrary code can run;</li>
+<li>state is durable and recoverable;</li>
+<li>identities and delegated authority are traceable;</li>
+<li>secrets are short-lived and scoped;</li>
+<li>every consequential action produces evidence;</li>
+<li>task, trajectory, security, and recovery evaluations exist;</li>
+<li>regression gates run in CI/CD;</li>
+<li>model and prompt versions are pinned and traceable;</li>
+<li>cost, latency, quality, and intervention are observable;</li>
+<li>rollback, cancellation, and kill-switch procedures are tested;</li>
+<li>operational ownership and SLOs are defined;</li>
+<li>incident response and forensic procedures are documented;</li>
+<li>data retention and deletion are implemented;</li>
+<li>tenant isolation is verified where applicable;</li>
+<li>accessibility and usability of approval interfaces are tested;</li>
+<li>product limitations are disclosed.</li>
+</ul>
+<p><em>(Consolidated production readiness checklist appears in Appendix C.)</em></p>
+<hr/>
+<h1 data-part="true" id="part-v">PART V — ADOPT</h1>
+<h2 id="part-v-tldr">Part V TL;DR</h2>
+<blockquote>
+<p>Enterprise adoption requires platform administration, developer experience, operations, and governance capabilities as first-class product features. ISVs need multi-tenancy, extensibility, configuration, metering, and product compatibility on top of that. External agent interoperability is emerging as a design axis. Build/buy/compose decisions should follow strategic criteria — not vendor claims. A four-phase delivery roadmap moves from discovery through platformisation to ecosystem scale. The maturity ladder pairs A0–A5 autonomy with L0–L5 platform maturity; do not pursue high autonomy at low maturity.</p>
+</blockquote>
+<hr/>
+<h2 id="ch-23-enterprise-product-requirements">23. Enterprise Product Requirements</h2>
+<p>An enterprise harness should include:</p>
+<p><strong>Platform administration.</strong> Organisation, tenant, project, and environment hierarchy; role-based and attribute-based access control; central policy management; agent and tool catalog; model provider configuration; usage quotas and budgets; audit search and export; retention configuration; incident controls and kill switch.</p>
+<p><strong>Developer experience.</strong> CLI and SDK; local runtime; simulation tools; scaffolding templates; test harness; replay debugger; trace viewer; schema generation; tool mocking; workflow visualisation; extension packaging.</p>
+<p><strong>Operations.</strong> Run console; pause, resume, cancel, retry, and rewind; queue and concurrency management; health dashboards; cost analytics; model and tool performance; alerting; incident forensics.</p>
+<p><strong>Governance.</strong> Approval matrices; agent risk classification; release attestations; model allowlists; policy exceptions; periodic access review; compliance evidence export; data lineage.</p>
+<hr/>
+<h2 id="ch-24-isv-product-requirements">24. ISV Product Requirements</h2>
+<p>An ISV harness must add product-grade capabilities.</p>
+<h3 id="ch-24-1-multi-tenancy">24.1 Multi-tenancy</h3>
+<p>Tenant-isolated state, memory, evidence, and artifacts; tenant-specific encryption boundaries where required; noisy-neighbour controls; tenant-specific policies; tenant-owned model keys as an option; regional tenancy; tenant deletion and export.</p>
+<h3 id="ch-24-2-extensibility">24.2 Extensibility</h3>
+<p>Stable extension SDK; versioned tool contracts; tenant-installed extensions; signed package registry; capability declarations; compatibility testing; deprecation lifecycle; extension billing hooks.</p>
+<h3 id="ch-24-3-configuration">24.3 Configuration</h3>
+<p>Customers should be able to configure: allowed actions; approval rules; business vocabulary; data connectors; model preferences; cost limits; memory policy; evidence retention; escalation paths; UI branding where appropriate. Configuration must not permit bypassing platform safety boundaries.</p>
+<h3 id="ch-24-4-metering-and-pricing">24.4 Metering and pricing</h3>
+<p>The platform should meter: model tokens and calls; agent runtime duration; sandbox compute; storage; tool invocations; workflow runs; premium connectors; evaluation runs; human review services; business outcomes where contractually appropriate.</p>
+<p><strong>Potential pricing models.</strong> Per user; per task; per successful task; per runtime hour; consumption plus platform fee; tenant subscription with included usage; outcome-based pricing; managed operations fee. The cost model must make model, runtime, infrastructure, and service margins visible.</p>
+<h3 id="ch-24-5-product-compatibility">24.5 Product compatibility</h3>
+<p>Agent behaviour must be versioned; existing customer workflows must not silently change after model upgrades; tenants need controlled opt-in to major behaviour changes; old run state must remain readable or migratable; extensions require compatibility ranges.</p>
+<hr/>
+<h2 id="ch-25-external-agent-interoperability">25. External Agent Interoperability</h2>
+<p>Software products will increasingly be accessed by external agents. A harness should therefore expose agent-friendly interfaces.</p>
+<p><strong>Requirements.</strong> Machine-readable action schemas; stable resource identifiers; explicit preconditions and side effects; price, policy, and constraint metadata; idempotency support; delegated authorisation; consent and approval flows; result provenance; rate and budget controls; anti-abuse controls; external-agent identity; transaction receipts; dispute and rollback mechanisms.</p>
+<p><strong>Interaction surfaces should be distinguished.</strong> Human UI; first-party agent UI; internal agent APIs; external agent APIs. Do not expose internal unrestricted tools directly to external agents.</p>
+<hr/>
+<h2 id="ch-26-worked-examples">26. Worked Examples</h2>
+<h3 id="ch-26-1-example-1-coding-harness">26.1 Example 1 — Coding Harness</h3>
+<p><strong>Objective.</strong> Implement a feature in an existing repository and create a pull request.</p>
+<p><strong>Flow.</strong></p>
+<pre><code class="language-text">Task intake
+-&gt; Read-only repository inspection
+-&gt; Architecture and instruction retrieval
+-&gt; Baseline build and tests
+-&gt; Change plan
+-&gt; Policy validation
+-&gt; Isolated branch and sandbox
+-&gt; Code modification
+-&gt; Unit/integration/browser tests
+-&gt; Static and security scans
+-&gt; Diff review
+-&gt; Pull request creation
+-&gt; Human review
+</code></pre>
+<p><strong>Required tools.</strong> Repository search; file read; patch apply; build; test; lint; type check; dependency scan; secret scan; browser test; pull request create.</p>
+<p><strong>Completion criteria.</strong> Acceptance tests pass; no new critical security issues; diff is scoped; pull request contains evidence; no direct main-branch write.</p>
+<h3 id="ch-26-2-example-2-enterprise-service-desk-agent">26.2 Example 2 — Enterprise Service-Desk Agent</h3>
+<p><strong>Objective.</strong> Resolve common access or configuration incidents.</p>
+<p><strong>Pattern.</strong> Read incident; retrieve authorised user and asset context; classify request; select approved runbook; propose action; require approval for privileged changes; execute via bounded tool; verify outcome; update ticket with evidence; escalate when verification fails.</p>
+<p><strong>Guardrails.</strong> No free-form shell on production systems; no standing administrator credential; all changes through approved automation; user identity verified; change window enforced; rollback runbook attached.</p>
+<h3 id="ch-26-3-example-3-isv-customer-configuration-agent">26.3 Example 3 — ISV Customer Configuration Agent</h3>
+<p><strong>Objective.</strong> Allow a customer administrator to describe a desired workflow in natural language.</p>
+<p><strong>Flow.</strong></p>
+<pre><code class="language-text">Intent capture
+-&gt; Convert to typed configuration proposal
+-&gt; Validate against tenant entitlements
+-&gt; Simulate workflow
+-&gt; Show diff and impact
+-&gt; Customer approval
+-&gt; Apply versioned configuration
+-&gt; Run smoke tests
+-&gt; Activate progressively
+</code></pre>
+<p>The agent generates configuration but cannot bypass the product's schema, entitlements, or policy engine.</p>
+<h3 id="ch-26-4-example-4-self-extending-developer-harness">26.4 Example 4 — Self-Extending Developer Harness</h3>
+<p><strong>Objective.</strong> Add an audit event whenever a file-deletion tool is used.</p>
+<p><strong>Safe implementation.</strong></p>
+<ol>
+<li>Inspect extension SDK and current tool lifecycle events.</li>
+<li>Generate a TypeScript extension in an isolated branch.</li>
+<li>Subscribe to pre-delete and post-delete events.</li>
+<li>Emit structured audit records without recording file contents unnecessarily.</li>
+<li>Add unit and integration tests.</li>
+<li>Test failed deletion and partial failure.</li>
+<li>Verify no recursive event loop.</li>
+<li>Run security and dependency checks.</li>
+<li>Package and sign the extension.</li>
+<li>Deploy to a test environment.</li>
+<li>Enable for selected users.</li>
+<li>Promote after evaluation.</li>
+</ol>
+<p>The agent may author the extension. The harness controls whether it becomes active.</p>
+<hr/>
+<h2 id="ch-27-build-buy-or-compose">27. Build, Buy, or Compose</h2>
+<h3 id="ch-27-1-build-custom-when">27.1 Build custom when</h3>
+<p>Harness behaviour is core product differentiation; regulation requires deep control; specialised execution or data boundaries exist; very high scale justifies optimisation; existing platforms cannot support the required extension model; long-term platform ownership is strategic.</p>
+<h3 id="ch-27-2-buy-managed-when">27.2 Buy managed when</h3>
+<p>Speed is more important than differentiation; use cases are conventional; managed compliance and operations create value; the organisation lacks platform engineering capacity; vendor lock-in and pricing are acceptable.</p>
+<h3 id="ch-27-3-compose-open-source-components-when">27.3 Compose open-source components when</h3>
+<p>Custom product behaviour is required; the organisation can operate distributed systems; a replaceable framework strategy is desired; open-source licensing is suitable; internal teams can own security and reliability hardening.</p>
+<h3 id="ch-27-4-recommended-default">27.4 Recommended default</h3>
+<p>Use a composable architecture: open-source or managed orchestration framework; product-owned tool and policy contracts; managed or standard workflow persistence; hardened sandbox service; central model gateway; independent evaluation and evidence platform.</p>
+<hr/>
+<h2 id="ch-28-delivery-roadmap">28. Delivery Roadmap</h2>
+<h3 id="ch-28-1-phase-0-discovery-and-control-definition-2-to-4-weeks">28.1 Phase 0 — Discovery and control definition (2 to 4 weeks)</h3>
+<p><strong>Deliverables.</strong> Use-case inventory; risk classification; task contracts; autonomy levels; target architecture; framework assessment; policy baseline; evaluation baseline; cost model.</p>
+<p><strong>Exit criteria.</strong> One bounded use case selected; owner and success metrics defined; data and action boundaries approved.</p>
+<h3 id="ch-28-2-phase-1-developer-harness-foundation-4-to-8-weeks">28.2 Phase 1 — Developer harness foundation (4 to 8 weeks)</h3>
+<p><strong>Deliverables.</strong> Model gateway; agent registry; tool SDK; local sandbox; typed state; trace and evidence schema; initial coding or business agent; offline evaluation suite.</p>
+<p><strong>Exit criteria.</strong> Agent completes tasks in simulation; all side effects are isolated; traces and evidence are complete.</p>
+<h3 id="ch-28-3-phase-2-controlled-pilot-6-to-12-weeks">28.3 Phase 2 — Controlled pilot (6 to 12 weeks)</h3>
+<p><strong>Deliverables.</strong> Enterprise identity; policy engine integration; durable execution; human approval; production-like sandbox; dashboards; canary release; operating runbooks.</p>
+<p><strong>Exit criteria.</strong> Agreed quality and cost thresholds met; incident and rollback tested; security review completed.</p>
+<h3 id="ch-28-4-phase-3-platformisation-3-to-6-months">28.4 Phase 3 — Platformisation (3 to 6 months)</h3>
+<p><strong>Deliverables.</strong> Reusable agent templates; tool catalog; tenant/environment controls; extension packaging; central evaluation service; CI/CD integration; self-service developer portal; SLOs and support model.</p>
+<h3 id="ch-28-5-phase-4-product-and-ecosystem-scale-6-to-18-months">28.5 Phase 4 — Product and ecosystem scale (6 to 18 months)</h3>
+<p><strong>Deliverables.</strong> External agent interfaces; customer-configurable policies; marketplace or partner extensions; usage metering and pricing; cross-agent coordination; advanced simulation; region and compliance expansion.</p>
+<hr/>
+<h2 id="ch-29-team-operating-model">29. Team &amp; Operating Model</h2>
+<h3 id="ch-29-1-core-roles">29.1 Core roles</h3>
+<p>Harness product manager; Principal architect; Agent runtime engineers; Platform engineers; Tool/integration engineers; Security engineer; Evaluation engineer; Quality engineer; SRE; Developer experience engineer; Domain specialist; UX designer for supervision and approval.</p>
+<h3 id="ch-29-2-responsibility-model">29.2 Responsibility model</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Area</th>
+<th scope="col">Primary owner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Area">Agent outcome and acceptance criteria</td>
+<td data-label="Primary owner">Product and domain owner</td>
+</tr>
+<tr>
+<td data-label="Area">Harness architecture</td>
+<td data-label="Primary owner">Principal architect</td>
+</tr>
+<tr>
+<td data-label="Area">Runtime and state</td>
+<td data-label="Primary owner">Agent platform engineering</td>
+</tr>
+<tr>
+<td data-label="Area">Tools and system integrations</td>
+<td data-label="Primary owner">Integration engineering</td>
+</tr>
+<tr>
+<td data-label="Area">Permissions and policy</td>
+<td data-label="Primary owner">Security and platform governance</td>
+</tr>
+<tr>
+<td data-label="Area">Evaluation suite</td>
+<td data-label="Primary owner">Evaluation and quality engineering</td>
+</tr>
+<tr>
+<td data-label="Area">Production reliability</td>
+<td data-label="Primary owner">SRE/platform operations</td>
+</tr>
+<tr>
+<td data-label="Area">Model selection</td>
+<td data-label="Primary owner">AI engineering with product and risk approval</td>
+</tr>
+<tr>
+<td data-label="Area">Agent release</td>
+<td data-label="Primary owner">Joint product, engineering, security, and operations decision</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="ch-29-3-change-governance">29.3 Change governance</h3>
+<p>Treat the following as production software changes: prompt and instruction changes; tool description changes; model changes; memory policy changes; workflow changes; policy changes; evaluation threshold changes; sandbox image changes.</p>
+<hr/>
+<h2 id="ch-30-maturity-model">30. Maturity Model</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Level</th>
+<th scope="col">Name</th>
+<th scope="col">Characteristics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Level">0</td>
+<td data-label="Name">Experiment</td>
+<td data-label="Characteristics">Standalone prompts, manual execution, no persistent evidence</td>
+</tr>
+<tr>
+<td data-label="Level">1</td>
+<td data-label="Name">Bounded agent</td>
+<td data-label="Characteristics">Limited tools, local sandbox, basic tests, human supervision</td>
+</tr>
+<tr>
+<td data-label="Level">2</td>
+<td data-label="Name">Managed harness</td>
+<td data-label="Characteristics">Central model gateway, typed state, policy, durable traces, approvals</td>
+</tr>
+<tr>
+<td data-label="Level">3</td>
+<td data-label="Name">Enterprise platform</td>
+<td data-label="Characteristics">Shared tool catalog, tenancy, SLOs, evaluations, CI/CD, governance</td>
+</tr>
+<tr>
+<td data-label="Level">4</td>
+<td data-label="Name">Product ecosystem</td>
+<td data-label="Characteristics">Customer configuration, extensions, external agents, metering</td>
+</tr>
+<tr>
+<td data-label="Level">5</td>
+<td data-label="Name">Adaptive but governed</td>
+<td data-label="Characteristics">Automated optimisation and extension under strict evaluation and release controls</td>
+</tr>
+</tbody>
+</table></div>
+<p>An organisation should not pursue high autonomy while remaining at low harness maturity. Levels 1–5 here align conceptually with the Cybage <em>AI-SDLC L1–L5 maturity ladder</em> (Ad Hoc → Exploratory → Standardized → Managed → Optimizing); autonomy (A0–A5, Ch 8) is orthogonal and composes with these.</p>
+<hr/>
+<h2 id="ch-31-key-strategic-decisions">31. Key Strategic Decisions</h2>
+<p>Every harness programme must explicitly decide:</p>
+<ol>
+<li>Which actions remain deterministic?</li>
+<li>Which decisions may be delegated to a model?</li>
+<li>What is the highest permitted autonomy level?</li>
+<li>What evidence proves completion?</li>
+<li>Which state is short-lived, durable, or prohibited from retention?</li>
+<li>Which tools can change systems of record?</li>
+<li>What requires human approval?</li>
+<li>How is execution isolated?</li>
+<li>How are model and framework dependencies abstracted?</li>
+<li>How are changes evaluated and promoted?</li>
+<li>How are tenants isolated?</li>
+<li>How is cost allocated and priced?</li>
+<li>How can the agent fail safely?</li>
+<li>How can operations be reversed?</li>
+<li>Which harness assets create proprietary advantage?</li>
+</ol>
+<hr/>
+<h2 id="ch-32-recommended-engineering-position">32. Recommended Engineering Position</h2>
+<p>Treat harness engineering as a <strong>product platform capability</strong> with three layers:</p>
+<h3 id="ch-32-1-layer-1-common-control-platform">32.1 Layer 1 — Common control platform</h3>
+<p>Identity, model gateway, policy, state, sandboxing, audit, evaluation, telemetry, and cost management.</p>
+<h3 id="ch-32-2-layer-2-domain-execution-kits">32.2 Layer 2 — Domain execution kits</h3>
+<p>Tools, skills, workflow patterns, schemas, knowledge connectors, evaluation packs, and approval templates for software engineering, customer support, commerce, finance, operations, or other domains.</p>
+<h3 id="ch-32-3-layer-3-product-and-client-solutions">32.3 Layer 3 — Product and client solutions</h3>
+<p>Specific agents, user journeys, external interfaces, and business outcomes built using the common platform and domain kits.</p>
+<p>This avoids two extremes: a monolithic universal platform that cannot adapt to domain needs; and isolated project agents that cannot meet enterprise controls.</p>
+<hr/>
+<h2 id="ch-33-conclusion">33. Conclusion</h2>
+<p>Agent frameworks make it easier to express model-driven workflows. Harness engineering makes those workflows operable, secure, testable, and commercially viable.</p>
+<p>The near-term opportunity is to standardise how agents receive context, invoke tools, execute code, persist state, produce evidence, and pass quality gates. The longer-term opportunity is larger: the harness can become the programmable operating layer through which software systems interpret goals and coordinate work.</p>
+<p>This transition does not reduce the importance of software engineering. It increases it. As models generate more implementation, software engineers must build stronger contracts, clearer architectures, safer execution environments, better tests, more reliable state machines, richer observability, and more disciplined product controls. The competitive question will move from "Which model do we use?" to:</p>
+<blockquote>
+<p><strong>How effectively does our harness convert changing model capability into reliable, differentiated, and governable software outcomes?</strong></p>
+</blockquote>
+<hr/>
+<h1 data-part="true" id="appendices">APPENDICES</h1>
+<h2 id="app-a-minimal-agent-definition">Appendix A — Minimal Agent Definition</h2>
+<pre><code class="language-yaml">apiVersion: harness/v1
+kind: Agent
+metadata:
+  name: repository-change-agent
+  owner: software-platform
+spec:
+  purpose: "Make verified changes to approved repositories"
+  autonomyLevel: A2
+  modelPolicy: coding-standard
+  workflow: repository-change-v3
+  tools:
+    - repository.read
+    - repository.search
+    - repository.apply_patch
+    - build.run
+    - test.run
+    - pull_request.create
+  constraints:
+    maxSteps: 40
+    maxCostUsd: 8
+    allowedEnvironments: [development]
+  approvals:
+    - when: "tool == 'pull_request.merge'"
+      policy: engineering-owner
+  evidence:
+    required:
+      - source_diff
+      - test_report
+      - security_scan
+  evaluations:
+    suite: repository-change-standard-v5
+</code></pre>
+<hr/>
+<h2 id="app-b-tool-contract-example">Appendix B — Tool Contract Example</h2>
+<pre><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunTestsInput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workspaceId", "command", "timeoutSeconds"],
+  "properties": {
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "command": {
+      "type": "string",
+      "enum": ["unit", "integration", "browser", "all"]
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600
+    }
+  }
+}
+</code></pre>
+<hr/>
+<h2 id="app-c-production-readiness-checklist">Appendix C — Production Readiness Checklist</h2>
+<h3 id="app-c-1-architecture">C.1 Architecture</h3>
+<ul>
+<li>[ ] Trust boundaries documented</li>
+<li>[ ] Framework abstraction defined</li>
+<li>[ ] Typed task and state schemas</li>
+<li>[ ] Durable execution implemented</li>
+<li>[ ] Tool contracts versioned</li>
+</ul>
+<h3 id="app-c-2-security">C.2 Security</h3>
+<ul>
+<li>[ ] Least-privilege agent identity</li>
+<li>[ ] Short-lived credentials</li>
+<li>[ ] Network deny-by-default</li>
+<li>[ ] Sandbox isolation tested</li>
+<li>[ ] Cross-tenant tests passed</li>
+<li>[ ] Prompt-injection controls tested</li>
+<li>[ ] Supply-chain scanning enabled</li>
+</ul>
+<h3 id="app-c-3-reliability">C.3 Reliability</h3>
+<ul>
+<li>[ ] Retry safety documented</li>
+<li>[ ] Idempotency implemented</li>
+<li>[ ] Loop detection enabled</li>
+<li>[ ] Timeouts and cancellation tested</li>
+<li>[ ] Checkpoint restore tested</li>
+<li>[ ] Rollback or compensation tested</li>
+</ul>
+<h3 id="app-c-4-quality">C.4 Quality</h3>
+<ul>
+<li>[ ] Offline evaluation suite</li>
+<li>[ ] Deterministic acceptance checks</li>
+<li>[ ] Safety and malicious-input tests</li>
+<li>[ ] Regression thresholds</li>
+<li>[ ] Shadow or canary rollout</li>
+</ul>
+<h3 id="app-c-5-operations">C.5 Operations</h3>
+<ul>
+<li>[ ] End-to-end tracing</li>
+<li>[ ] Cost dashboards</li>
+<li>[ ] SLOs and alerts</li>
+<li>[ ] Run pause/resume/cancel controls</li>
+<li>[ ] Kill switch</li>
+<li>[ ] Incident runbooks</li>
+</ul>
+<h3 id="app-c-6-product">C.6 Product</h3>
+<ul>
+<li>[ ] Autonomy level disclosed</li>
+<li>[ ] Approval UX tested</li>
+<li>[ ] Evidence visible to users</li>
+<li>[ ] Limitations documented</li>
+<li>[ ] Tenant configuration bounded</li>
+<li>[ ] Pricing and metering validated</li>
+</ul>
+<hr/>
+<h2 id="app-d-html-rendering-directives-authoritative">Appendix D — HTML Rendering Directives <em>(authoritative)</em></h2>
+<p>This appendix is the single source of truth for how the Harness Engineering Specification is rendered as HTML. Any HTML generator (human or agent) MUST follow these directives when converting this Markdown to a browser-openable deliverable.</p>
+<h3 id="app-d-1-deliverable">D.1 Deliverable</h3>
+<ul>
+<li><strong>Format:</strong> Single self-contained <code>.html</code> file. No external files, no build step required to open.</li>
+<li><strong>Filename:</strong> <code>harness-engineering-specification.html</code></li>
+<li><strong>Origin:</strong> Must open correctly by double-click from a local filesystem (<code>file://</code>) — no local server required.</li>
+<li><strong>Size target:</strong> Under 800 KB uncompressed; use inline SVG (not raster images) for diagrams.</li>
+<li><strong>Encoding:</strong> UTF-8, <code>&lt;!DOCTYPE html&gt;</code> HTML5.</li>
+</ul>
+<h3 id="app-d-2-external-dependencies">D.2 External dependencies</h3>
+<ul>
+<li><strong>CDNs:</strong> None. No Google Fonts, no CDN CSS, no external JavaScript. All fonts must be system-font stacks. All CSS and JS inlined in <code>&lt;style&gt;</code> and <code>&lt;script&gt;</code> tags.</li>
+<li><strong>Network:</strong> The page must render fully and function fully with no network connection.</li>
+<li><strong>Analytics / trackers:</strong> None.</li>
+</ul>
+<h3 id="app-d-3-layout">D.3 Layout</h3>
+<ul>
+<li><strong>Shell:</strong> Two-pane layout on desktop (&gt;= 1024 px): sticky left sidebar TOC (280–320 px), main content column (max-width 780–860 px, comfortable measure). Below 1024 px collapse the sidebar into a top drawer accessible via a "Contents" button.</li>
+<li><strong>Sticky top bar:</strong> Document title + Part indicator + theme toggle + print button. Height ≤ 56 px.</li>
+<li><strong>Sidebar TOC:</strong> Grouped by Parts I–V and Appendices. Current section highlighted based on scroll position (IntersectionObserver). Collapsible per Part.</li>
+<li><strong>Anchors:</strong> Every chapter, sub-section, and appendix must have a stable <code>id</code> derived from its number (e.g., <code>ch-10-4-context-assembler</code>, <code>app-d-4-typography</code>). Anchor links must copy to clipboard on click and show a brief "Link copied" toast.</li>
+<li><strong>Reading progress bar:</strong> Thin (2 px) progress bar under the top bar reflecting scroll position through the document.</li>
+</ul>
+<h3 id="app-d-4-theme-light-dark-toggle">D.4 Theme (light / dark toggle)</h3>
+<ul>
+<li><strong>Default:</strong> Light theme.</li>
+<li><strong>Preference detection:</strong> On first load, respect <code>prefers-color-scheme</code>; if the user hasn't chosen, follow the OS preference. Once the user toggles, persist the choice in <code>localStorage</code> under key <code>hes.theme</code> (values: <code>light</code> | <code>dark</code>).</li>
+<li><strong>Toggle UI:</strong> Accessible toggle in the sticky top bar, labelled "Theme". Uses <code>aria-pressed</code> and provides a visible label ("Light" / "Dark"), not just an icon.</li>
+<li><strong>Palette — light:</strong> Background <code>#FFFFFF</code>, surface <code>#F7F8FA</code>, primary text <code>#0B1220</code> (near-black), muted <code>#4A5568</code>, accent <code>#1E3A8A</code> (Cybage dark-navy), success <code>#0F766E</code>, warning <code>#B45309</code>, danger <code>#B91C1C</code>, code background <code>#F1F5F9</code>.</li>
+<li><strong>Palette — dark:</strong> Background <code>#0B1220</code> (Cybage dark-navy), surface <code>#111827</code>, primary text <code>#E5E7EB</code>, muted <code>#9CA3AF</code>, accent <code>#93C5FD</code>, success <code>#5EEAD4</code>, warning <code>#FCD34D</code>, danger <code>#FCA5A5</code>, code background <code>#1F2937</code>.</li>
+<li><strong>Contrast:</strong> All body text ≥ 7:1 in both themes; UI text ≥ 4.5:1. Verify with an automated contrast pass.</li>
+<li><strong>Transition:</strong> 150 ms CSS transition on background and text colour when toggling; respect <code>prefers-reduced-motion</code>.</li>
+</ul>
+<h3 id="app-d-5-typography">D.5 Typography</h3>
+<ul>
+<li><strong>Body font stack:</strong> <code>-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif</code>.</li>
+<li><strong>Monospace stack:</strong> <code>"SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace</code>.</li>
+<li><strong>Type scale:</strong> Base 16 px; scale 1.200. H1 32 px, H2 26 px, H3 22 px, H4 18 px, body 16 px, small 14 px, code 14 px.</li>
+<li><strong>Line height:</strong> 1.65 for body prose; 1.4 for code blocks.</li>
+<li><strong>Measure:</strong> Prose columns 60–75 characters wide.</li>
+</ul>
+<h3 id="app-d-6-diagrams">D.6 Diagrams</h3>
+<ul>
+<li>The ASCII reference architecture in §9 must be rendered as an <strong>inline SVG</strong> with labelled boxes, arrows, and text — not shown as <code>&lt;pre&gt;</code> ASCII. The SVG must be keyboard-focusable, have a <code>&lt;title&gt;</code> and <code>&lt;desc&gt;</code> element for screen readers, and provide a "View as text" toggle that reveals the original ASCII form for accessibility fallback.</li>
+<li>All plan / workflow ASCII blocks (§15.1, §15.3, §15.4, §17.1, §21.2, §26.1, §26.3) should render as <strong>styled fenced blocks</strong> with a subtle border and monospace font. Do not convert them all to SVG — only the reference architecture in §9.</li>
+<li>All Mermaid-like flows may be rendered as inline SVG <em>if</em> an inline (no-CDN) renderer is embedded; otherwise render as styled text blocks.</li>
+</ul>
+<h3 id="app-d-7-tables">D.7 Tables</h3>
+<ul>
+<li>Zebra striping on rows; sticky first-row headers when the table exceeds one viewport height.</li>
+<li>Column headers must have <code>scope="col"</code>.</li>
+<li>On narrow viewports (&lt; 640 px), collapse to a two-column key-value layout per row rather than horizontal scroll.</li>
+</ul>
+<h3 id="app-d-8-code-blocks">D.8 Code blocks</h3>
+<ul>
+<li>Preserve fence language (<code>yaml</code>, <code>json</code>, <code>typescript</code>, <code>text</code>).</li>
+<li>Syntax highlighting is optional but must be done inline (no CDN); if omitted, use monospace with subtle line numbering (aria-hidden).</li>
+<li>Every code block gets a small "Copy" button in the top-right that copies the raw text to clipboard, with focus-visible outline and a toast confirming copy.</li>
+<li>Code blocks must not overflow the container; use horizontal scroll within the block with a visible scrollbar.</li>
+</ul>
+<h3 id="app-d-9-callouts-and-tl-drs">D.9 Callouts and TL;DRs</h3>
+<ul>
+<li>Each Part TL;DR renders as a highlighted callout block with a left accent bar in the current accent colour, an "In brief" label, and larger body font (18 px).</li>
+<li>The Executive Framing at the top renders as a hero card with a subtle gradient background using the accent colour.</li>
+</ul>
+<h3 id="app-d-10-navigation-and-interaction">D.10 Navigation and interaction</h3>
+<ul>
+<li><strong>Keyboard:</strong> <code>Tab</code> cycles interactive elements; <code>/</code> focuses a client-side search field; <code>t</code> toggles theme; <code>Esc</code> closes any drawer or toast. All shortcuts must be listed in an accessible "Keyboard shortcuts" dialog reachable from the top bar (<code>?</code> opens it).</li>
+<li><strong>Search:</strong> Client-side, plain-text search across chapter titles, sub-section headings, and body content. Match highlighting in the sidebar TOC and in-page.</li>
+<li><strong>Deep links:</strong> Every anchor must be shareable via URL fragment and must scroll into view correctly on page load with the sidebar TOC synchronised.</li>
+<li><strong>No dead controls:</strong> Every button and link must do something visible. Placeholder actions are prohibited.</li>
+</ul>
+<h3 id="app-d-11-accessibility-wcag-2-2-aa">D.11 Accessibility (WCAG 2.2 AA)</h3>
+<ul>
+<li>Semantic landmarks: <code>&lt;header&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;main&gt;</code>, <code>&lt;aside&gt;</code> for TOC, <code>&lt;footer&gt;</code>.</li>
+<li>Visible focus ring on every interactive element (not just outline: none).</li>
+<li>Skip-to-content link as the first focusable element.</li>
+<li>All non-text controls have accessible names (<code>aria-label</code> or associated <code>&lt;label&gt;</code>).</li>
+<li>Reduced-motion support: disable all transitions/animations when <code>prefers-reduced-motion: reduce</code>.</li>
+<li>No content is conveyed by colour alone.</li>
+<li>All text meets contrast targets in D.4.</li>
+<li>Screen-reader-tested landmark structure; theme toggle announces state change.</li>
+</ul>
+<h3 id="app-d-12-print">D.12 Print</h3>
+<ul>
+<li>Dedicated <code>@media print</code> stylesheet:</li>
+<li>Hide the sidebar TOC, top bar, search, and copy buttons.</li>
+<li>Force light theme regardless of active theme.</li>
+<li>Reflow to single column, full width.</li>
+<li>Page breaks before each Part heading (<code>break-before: page</code>).</li>
+<li>Ensure code blocks do not break across pages where possible.</li>
+<li>Include a printed footer with document title, version, and page number.</li>
+</ul>
+<h3 id="app-d-13-responsive-breakpoints">D.13 Responsive breakpoints</h3>
+<p>Test at 360, 768, 1024, and 1440 px widths (per §14.4). At all widths:</p>
+<ul>
+<li>No horizontal page scroll.</li>
+<li>Primary actions (theme toggle, TOC access) always reachable.</li>
+<li>Font sizes and line heights preserve legibility.</li>
+</ul>
+<h3 id="app-d-14-performance">D.14 Performance</h3>
+<ul>
+<li>Total inline JavaScript ≤ 30 KB uncompressed.</li>
+<li>Total inline CSS ≤ 40 KB uncompressed.</li>
+<li>First contentful paint on cold local open under 500 ms on typical hardware.</li>
+<li>No layout shift after initial render.</li>
+</ul>
+<h3 id="app-d-15-content-fidelity">D.15 Content fidelity</h3>
+<ul>
+<li>All chapter and appendix numbering must be preserved exactly as in the Markdown.</li>
+<li>Every Markdown code block, table, and diagram in this document must appear in the HTML with identical content.</li>
+<li>Do not summarise or truncate any body text during rendering.</li>
+<li>If a rendering ambiguity exists, prefer the treatment specified in this appendix; otherwise preserve the source verbatim.</li>
+</ul>
+<h3 id="app-d-16-footer">D.16 Footer</h3>
+<p>The rendered HTML footer must include: document title; version; date; owner (Cybage); a link back to the top; and a note that this is a reference specification, not legal advice.</p>
+<h3 id="app-d-17-do-not-list">D.17 Do-not list</h3>
+<p>The HTML render must not:</p>
+<ul>
+<li>fetch any resource over the network at runtime;</li>
+<li>include analytics, telemetry, or beacons;</li>
+<li>use <code>localStorage</code> for anything other than the theme preference (<code>hes.theme</code>) and optional last-scroll position (<code>hes.scroll</code>);</li>
+<li>rely on JavaScript for basic content readability — the document must remain readable and navigable with JavaScript disabled (theme toggle and search may be JS-only);</li>
+<li>introduce content not present in this Markdown source.</li>
+</ul>
+<hr/>
+<h2 id="app-e-references-source-notes">Appendix E — References &amp; Source Notes</h2>
+<p>The market and technology observations in this specification were informed by the following sources. Product behaviour and pricing can change; implementations should verify current vendor documentation before adoption.</p>
+<ol>
+<li>Pi documentation: minimal terminal coding harness, TypeScript extensions, skills, prompt templates, packages, providers, sessions, compaction, security, and containerisation. https://pi.dev/docs/latest</li>
+<li>Pi project site: minimal agent harness and extensibility philosophy. https://pi.dev/</li>
+<li>Pi open-source repository. https://github.com/earendil-works/pi</li>
+<li>LangGraph persistence documentation: checkpointers, stores, short-term and long-term memory, fault tolerance, and time travel. https://docs.langchain.com/oss/python/langgraph/persistence</li>
+<li>LangChain human-in-the-loop documentation: durable interrupts, approval, edit, reject, and resume patterns. https://docs.langchain.com/oss/python/langchain/human-in-the-loop</li>
+<li>Hugging Face smolagents documentation and repository: minimal code-first agents and sandbox execution options. https://huggingface.co/docs/smolagents/index and https://github.com/huggingface/smolagents</li>
+<li>The New Stack, "Anthropic, OpenAI, Google, and Microsoft agree that the harness is the product. They disagree on the price." Frames the emerging split between open-source, managed, runtime-based, and provider-controlled harness offerings. https://thenewstack.io/ai-agent-harness-pricing-split/</li>
+<li>The New Stack coverage of autonomous worker agents and the importance of controlled production execution. https://thenewstack.io/harness-autonomous-worker-agents/</li>
+<li>The New Stack coverage of agent SDK sandboxes, durable execution, and separation of harness from model compute. https://thenewstack.io/openai-agents-sdk-sandboxes/</li>
+<li>Ning et al., "Code as Agent Harness," 2026. Frames code as an operational substrate for reasoning, tools, environment modelling, verification, and multi-agent coordination. https://arxiv.org/abs/2605.18747</li>
+<li>Bui, "Building AI Coding Agents for the Terminal: Scaffolding, Harness, Context Engineering, and Lessons Learned," 2026. https://arxiv.org/abs/2603.05344</li>
+<li><em>Practical AI</em> podcast, episode 363, "Building Durable AI Agents." Daniel Whitenack interviews Hamza Tahir (ZenML co-founder) on model-harness coupling, durable task-queue architecture, checkpoint/replay, mid-flight version pinning, and the companion/trainer-agent pattern. Source for §2.6, §3.4, §10.6 (dynamic graphs and version pinning), §15.16, §15.17, §20.3 (counterfactual-replay caveat), and the ZenML/Kitaru and open-model entries in §7.3. 9 July 2026. https://practicalai.show/363</li>
+</ol>
+<p><strong>Companion Cybage assets:</strong> <em>AI-Native SDLC Blueprint v1.1</em>; <em>19-Point Capability Mapping</em>; <em>Cybage AI-Native Consulting Deck</em>; <em>Cybage AI-SDLC Executive Deck</em>; <em>Cybage AI-SDLC CxO PDF</em>; <em>AI-Native SDLC Infographic</em>; <em>PoV — Five-Index Measurement Framework</em>.</p>
+<hr/>
+<h2 id="app-f-glossary">Appendix F — Glossary</h2>
+<h3 id="app-f-1-harness-engineering-terms-from-ch-5-extended">F.1 Harness engineering terms <em>(from Ch 5, extended)</em></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Term</th>
+<th scope="col">Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Term"><strong>Agent</strong></td>
+<td data-label="Definition">A software actor that uses a model to interpret a goal, decide or select actions, invoke tools, observe outcomes, update state, and continue until completion, escalation, or termination.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Agent framework</strong></td>
+<td data-label="Definition">A development abstraction used to define agent behaviour (prompts, graph nodes, tool schemas, model calls, routing logic).</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Agent harness</strong></td>
+<td data-label="Definition">The concrete runtime, control plane, execution plane, and engineering environment in which an agent operates.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Agent platform</strong></td>
+<td data-label="Definition">A productised collection of harness services, developer tooling, operations tooling, governance, deployment capabilities, and reusable components used to build and run multiple agents.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Autonomy level (A0–A5)</strong></td>
+<td data-label="Definition">The scale of permitted independent action, from advisory (A0) to delegated authority (A5). See Ch 8.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Capability grant / token</strong></td>
+<td data-label="Definition">A short-lived, task-scoped credential binding principal, task, tool, resource, expiry, and budget.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Checkpoint</strong></td>
+<td data-label="Definition">Recoverable snapshot used to resume, inspect, branch, or rewind execution.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Companion (trainer) agent</strong></td>
+<td data-label="Definition">An agent that continuously mines production traces for expensive-but-successful runs, replays them to test cheaper or faster alternatives, and proposes or (under release gates) applies optimisations. See §15.17.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Context engineering</strong></td>
+<td data-label="Definition">The design of what information, instructions, tools, examples, policies, state, memory, and environmental observations are made available to a model at each step.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Context firewall</strong></td>
+<td data-label="Definition">A pattern that separates untrusted retrieved content from control instructions.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Coupled / decoupled harness</strong></td>
+<td data-label="Definition">A model-coupled harness is trained or tuned alongside a specific model family for higher tool-call accuracy at the cost of portability; a model-decoupled harness is deliberately model-agnostic for portability and supply-chain resilience at some cost to peak performance. See §2.6.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Durable task-queue mediation</strong></td>
+<td data-label="Definition">The pattern of persisting a task as an event on a message bus before execution, so a stateless worker pool can pick it up, crash, and be resumed by another worker without losing progress. See §15.16.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Evidence</strong></td>
+<td data-label="Definition">Machine-generated proof of an agent action or result (logs, diffs, command output, test results, screenshots, API responses, approvals, traces, checksums, signed artifacts).</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>HIL (Human-in-the-Loop)</strong></td>
+<td data-label="Definition">Mandatory approval gate between AI agent action and production; a first-class workflow state, not an exception.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Idempotency</strong></td>
+<td data-label="Definition">Property of an operation such that applying it multiple times yields the same result as applying it once.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Model gateway</strong></td>
+<td data-label="Definition">A centralised abstraction over provider-specific model APIs providing routing, budget, retention, and governance.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Policy engine</strong></td>
+<td data-label="Definition">A component external to the model that evaluates every consequential action for allow / deny / require-approval / substitute outcomes.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Sandbox</strong></td>
+<td data-label="Definition">An isolated execution environment that limits filesystem, process, network, identity, and resource access for generated code or agent actions.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Shadow execution</strong></td>
+<td data-label="Definition">Running a new model, prompt, workflow, or policy version in parallel without side effects to compare its proposed decisions against production.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Skill</strong></td>
+<td data-label="Definition">A reusable package of instructions, examples, tool usage guidance, domain conventions, and optional executable resources.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>State (run / working / long-term / knowledge / evidence / artifact)</strong></td>
+<td data-label="Definition">The seven-class taxonomy used to categorise durable and transient information; see §10.9.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Task contract</strong></td>
+<td data-label="Definition">The immutable typed representation of an agent's job, including objective, inputs, constraints, evidence requirements, and completion criteria.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Tool</strong></td>
+<td data-label="Definition">A typed, bounded capability exposed to an agent.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Trajectory</strong></td>
+<td data-label="Definition">The sequence of steps, tools, arguments, and observations an agent produces to reach an outcome. Evaluated distinctly from the final answer.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Workflow</strong></td>
+<td data-label="Definition">A defined sequence or graph of states and actions, including branches, loops, gates, retries, approvals, and terminal conditions.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="app-f-2-cybage-ai-sdlc-vocabulary-cross-referenced">F.2 Cybage / AI-SDLC vocabulary <em>(cross-referenced)</em></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Term</th>
+<th scope="col">Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Term"><strong>CoE</strong></td>
+<td data-label="Definition">Center of Excellence — AI governance and enablement team.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>DART-PEM</strong></td>
+<td data-label="Definition">Delivery, Agility, Reliability, Technology — Product Engineering Maturity.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Five-Index Measurement Framework</strong></td>
+<td data-label="Definition">Adoption → Utilization → Quality → Velocity → Outcome; coherent maturity model linking AI adoption to engineering productivity to business outcomes. See companion PoV document.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>ISV</strong></td>
+<td data-label="Definition">Independent Software Vendor (product company).</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>L1–L5</strong></td>
+<td data-label="Definition">AI maturity levels: Ad Hoc → Exploratory → Standardized → Managed → Optimizing. Composes with autonomy levels A0–A5 (Ch 8) and harness maturity 0–5 (Ch 30).</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>MCP</strong></td>
+<td data-label="Definition">Model Context Protocol — agent orchestration layer.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>RAG</strong></td>
+<td data-label="Definition">Retrieval-Augmented Generation (also: Red/Amber/Green status — context-dependent).</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>SI</strong></td>
+<td data-label="Definition">System Integrator / outsourcer.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>T1 / T2 / T3</strong></td>
+<td data-label="Definition">Use case tiers: T1 = Pilot, T2 = Scale, T3 = Optimize.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>TCO</strong></td>
+<td data-label="Definition">Total Cost of Ownership.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="app-f-3-platform-and-vendor-references">F.3 Platform and vendor references</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th scope="col">Term</th>
+<th scope="col">Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Term"><strong>AgentCore</strong></td>
+<td data-label="Definition">AWS managed agent orchestration (Bedrock Agents).</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Azure AI Foundry</strong></td>
+<td data-label="Definition">Microsoft's agent platform (OpenAI GPT-4o + custom).</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>LangGraph</strong></td>
+<td data-label="Definition">Stateful agent orchestration framework by LangChain.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Pi</strong></td>
+<td data-label="Definition">Minimal terminal-native agent harness with TypeScript extensions.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>smolagents</strong></td>
+<td data-label="Definition">Hugging Face's minimal code-first Python agent library.</td>
+</tr>
+<tr>
+<td data-label="Term"><strong>Vertex AI</strong></td>
+<td data-label="Definition">Google's AI platform (Gemini models).</td>
+</tr>
+</tbody>
+</table></div>
+<hr/>
+<p><em>End of document.</em></p>
+    </div>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <p><strong>Harness Engineering Specification</strong> — Version 1.1 (polished, HTML-ready) — 13 July 2026</p>
+  <p>Owner: Cybage — AI Consulting &amp; Digital Transformation Practice.</p>
+  <p>This is a reference specification for internal use and controlled external distribution. It is not legal advice.</p>
+  <p><a href="#main-content" class="back-to-top">↑ Back to top</a></p>
+</footer>
+
+<dialog id="shortcuts-dialog" aria-labelledby="shortcuts-title">
+  <div class="dialog-inner">
+    <button class="dialog-close" data-dialog-close aria-label="Close">&times;</button>
+    <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+    <table>
+      <tbody>
+        <tr><td><kbd>/</kbd></td><td>Focus search</td></tr>
+        <tr><td><kbd>t</kbd></td><td>Toggle light / dark theme</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Close dialog or contents drawer</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Open this dialog</td></tr>
+        <tr><td><kbd>Tab</kbd></td><td>Move between interactive elements</td></tr>
+      </tbody>
+    </table>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Theme ---------- */
+  var root = document.documentElement;
+  function applyTheme(t) {
+    root.setAttribute("data-theme", t);
+    var btn = document.getElementById("theme-toggle");
+    if (btn) {
+      btn.setAttribute("aria-pressed", t === "dark" ? "true" : "false");
+      btn.textContent = t === "dark" ? "🌙 Dark" : "☀️ Light";
+    }
+  }
+  function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem("hes.theme"); } catch (e) {}
+    if (saved === "light" || saved === "dark") { applyTheme(saved); return; }
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(prefersDark ? "dark" : "light");
+  }
+  function toggleTheme() {
+    var cur = root.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    var next = cur === "dark" ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("hes.theme", next); } catch (e) {}
+  }
+  initTheme();
+
+  /* ---------- Toast ---------- */
+  var toastEl;
+  function toast(msg) {
+    if (!toastEl) {
+      toastEl = document.createElement("div");
+      toastEl.className = "toast";
+      toastEl.setAttribute("role", "status");
+      toastEl.setAttribute("aria-live", "polite");
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(function () { toastEl.classList.remove("show"); }, 1600);
+  }
+
+  /* ---------- Copy to clipboard helper ---------- */
+  function copyText(text, successMsg) {
+    function done(ok) { toast(ok ? successMsg : "Copy failed"); }
+    if (navigator.clipboard && window.isSecureContext !== false) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { fallbackCopy(text, done); });
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+  function fallbackCopy(text, cb) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      cb(ok);
+    } catch (e) { cb(false); }
+  }
+
+  /* ---------- Heading anchor links ---------- */
+  document.addEventListener("DOMContentLoaded", function () {
+    var headings = document.querySelectorAll(".content h1[id], .content h2[id], .content h3[id]");
+    headings.forEach(function (h) {
+      var a = document.createElement("a");
+      a.href = "#" + h.id;
+      a.className = "anchor-link";
+      a.setAttribute("aria-label", "Copy link to " + h.textContent.trim());
+      a.textContent = "#";
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        var url = location.origin + location.pathname + "#" + h.id;
+        history.replaceState(null, "", "#" + h.id);
+        copyText(url, "Link copied");
+      });
+      h.appendChild(a);
+    });
+  });
+
+  /* ---------- Code blocks: language label + copy button ---------- */
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("main pre").forEach(function (pre) {
+      if (pre.closest(".ascii-fallback")) return;
+      var codeEl = pre.querySelector("code");
+      var lang = "text";
+      if (codeEl) {
+        var m = /language-(\w+)/.exec(codeEl.className || "");
+        if (m) lang = m[1];
+      }
+      if (lang === "text") pre.classList.add("ascii-flow");
+      var wrap = document.createElement("div");
+      wrap.className = "codewrap";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      var langLabel = document.createElement("span");
+      langLabel.className = "code-lang";
+      langLabel.textContent = lang;
+      wrap.appendChild(langLabel);
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "code-copy-btn";
+      btn.textContent = "Copy";
+      btn.addEventListener("click", function () {
+        copyText(pre.innerText, "Code copied");
+      });
+      wrap.appendChild(btn);
+    });
+  });
+
+  /* ---------- ASCII diagram toggle ---------- */
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".ascii-toggle");
+    if (!btn) return;
+    var target = document.getElementById(btn.getAttribute("data-target"));
+    if (!target) return;
+    var hidden = target.classList.toggle("hidden");
+    btn.setAttribute("aria-expanded", hidden ? "false" : "true");
+    btn.textContent = hidden ? "View as text" : "Hide text view";
+  });
+
+  /* ---------- TOC group collapse ---------- */
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".toc-group-toggle");
+    if (!btn) return;
+    var group = btn.closest(".toc-group");
+    group.classList.toggle("collapsed");
+    btn.setAttribute("aria-expanded", group.classList.contains("collapsed") ? "false" : "true");
+  });
+
+  /* ---------- Mobile drawer ---------- */
+  var sidebar = document.getElementById("sidebar");
+  var drawerBtn = document.getElementById("toc-drawer-btn");
+  function openDrawer() { sidebar.classList.add("open"); drawerBtn.setAttribute("aria-expanded", "true"); }
+  function closeDrawer() { sidebar.classList.remove("open"); drawerBtn.setAttribute("aria-expanded", "false"); }
+  if (drawerBtn) {
+    drawerBtn.addEventListener("click", function () {
+      sidebar.classList.contains("open") ? closeDrawer() : openDrawer();
+    });
+  }
+  document.addEventListener("click", function (e) {
+    if (window.innerWidth >= 1024) return;
+    if (!sidebar || !sidebar.classList.contains("open")) return;
+    if (sidebar.contains(e.target) || e.target === drawerBtn || (drawerBtn && drawerBtn.contains(e.target))) return;
+    closeDrawer();
+  });
+  document.querySelectorAll(".toc-list a").forEach(function (a) {
+    a.addEventListener("click", function () { if (window.innerWidth < 1024) closeDrawer(); });
+  });
+
+  /* ---------- Reading progress bar ---------- */
+  var fill = document.getElementById("progress-fill");
+  function updateProgress() {
+    var doc = document.documentElement;
+    var scrollTop = doc.scrollTop || document.body.scrollTop;
+    var height = doc.scrollHeight - doc.clientHeight;
+    var pct = height > 0 ? (scrollTop / height) * 100 : 0;
+    if (fill) fill.style.width = pct + "%";
+  }
+  document.addEventListener("scroll", updateProgress, { passive: true });
+  updateProgress();
+
+  /* ---------- Scrollspy ---------- */
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll(".toc-list a"));
+  var tocMap = {};
+  tocLinks.forEach(function (a) { tocMap[a.getAttribute("href").slice(1)] = a; });
+  var observedIds = Object.keys(tocMap);
+  var headingEls = observedIds.map(function (id) { return document.getElementById(id); }).filter(Boolean);
+  var currentActive = null;
+  function setActive(id) {
+    if (id === currentActive) return;
+    if (currentActive && tocMap[currentActive]) tocMap[currentActive].classList.remove("active");
+    if (id && tocMap[id]) {
+      tocMap[id].classList.add("active");
+      var grp = tocMap[id].closest(".toc-group");
+      if (grp) grp.classList.remove("collapsed");
+    }
+    currentActive = id;
+  }
+  if ("IntersectionObserver" in window && headingEls.length) {
+    var io = new IntersectionObserver(function (entries) {
+      var visible = entries.filter(function (en) { return en.isIntersecting; })
+        .sort(function (a, b) { return a.boundingClientRect.top - b.boundingClientRect.top; });
+      if (visible.length) setActive(visible[0].target.id);
+    }, { rootMargin: "-100px 0px -70% 0px", threshold: 0 });
+    headingEls.forEach(function (h) { io.observe(h); });
+  }
+
+  /* ---------- Search (sidebar filter + content highlight) ---------- */
+  var searchInput = document.getElementById("toc-search");
+  var noMatch = document.getElementById("toc-nomatch");
+  var searchMarks = [];
+  function clearMarks() {
+    searchMarks.forEach(function (m) {
+      var parent = m.parentNode;
+      if (!parent) return;
+      parent.replaceChild(document.createTextNode(m.textContent), m);
+      parent.normalize();
+    });
+    searchMarks = [];
+  }
+  function highlightContent(term) {
+    clearMarks();
+    if (!term) return;
+    var walker = document.createTreeWalker(document.querySelector(".content"), NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    var n;
+    while ((n = walker.nextNode())) {
+      if (n.parentNode && (n.parentNode.tagName === "SCRIPT" || n.parentNode.tagName === "STYLE")) continue;
+      if (n.nodeValue.toLowerCase().indexOf(term) !== -1) nodes.push(n);
+    }
+    var re = new RegExp("(" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig");
+    nodes.forEach(function (node) {
+      var span = document.createElement("span");
+      span.innerHTML = node.nodeValue.replace(re, "<mark>$1</mark>");
+      node.parentNode.replaceChild(span, node);
+      span.querySelectorAll("mark").forEach(function (m) { searchMarks.push(m); });
+    });
+  }
+  function runSearch() {
+    var term = (searchInput.value || "").trim().toLowerCase();
+    var anyMatch = false;
+    document.querySelectorAll(".toc-list li").forEach(function (li) {
+      var text = li.textContent.toLowerCase();
+      var match = !term || text.indexOf(term) !== -1;
+      li.style.display = match ? "" : "none";
+      if (match && term) anyMatch = true;
+    });
+    document.querySelectorAll(".toc-group").forEach(function (grp) {
+      var anyVisible = Array.prototype.some.call(grp.querySelectorAll("li"), function (li) { return li.style.display !== "none"; });
+      if (term) grp.classList.toggle("collapsed", !anyVisible);
+      grp.style.display = term && !anyVisible ? "none" : "";
+    });
+    if (noMatch) noMatch.style.display = term && !anyMatch ? "block" : "none";
+    highlightContent(term.length >= 2 ? term : "");
+    if (term.length >= 2 && searchMarks.length && typeof searchMarks[0].scrollIntoView === "function") {
+      searchMarks[0].scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }
+  if (searchInput) {
+    searchInput.addEventListener("input", runSearch);
+  }
+
+  /* ---------- Keyboard shortcuts ---------- */
+  var shortcutsDialog = document.getElementById("shortcuts-dialog");
+  function isTyping(el) {
+    return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      if (shortcutsDialog && shortcutsDialog.open) shortcutsDialog.close();
+      else if (sidebar && sidebar.classList.contains("open")) closeDrawer();
+      return;
+    }
+    if (isTyping(document.activeElement)) return;
+    if (e.key === "/") {
+      e.preventDefault();
+      if (window.innerWidth < 1024) openDrawer();
+      if (searchInput) searchInput.focus();
+    } else if (e.key === "t" || e.key === "T") {
+      toggleTheme();
+    } else if (e.key === "?") {
+      if (shortcutsDialog) { if (shortcutsDialog.open) shortcutsDialog.close(); else shortcutsDialog.showModal(); }
+    }
+  });
+
+  /* ---------- Buttons ---------- */
+  var themeBtn = document.getElementById("theme-toggle");
+  if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
+  var printBtn = document.getElementById("print-btn");
+  if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
+  var shortcutsBtn = document.getElementById("shortcuts-btn");
+  if (shortcutsBtn && shortcutsDialog) shortcutsBtn.addEventListener("click", function () { shortcutsDialog.showModal(); });
+  var dialogCloseBtns = document.querySelectorAll("[data-dialog-close]");
+  dialogCloseBtns.forEach(function (b) {
+    b.addEventListener("click", function () { var d = b.closest("dialog"); if (d) d.close(); });
+  });
+
+  /* ---------- Restore deep link scroll on load ---------- */
+  window.addEventListener("load", function () {
+    if (location.hash) {
+      var target = document.getElementById(location.hash.slice(1));
+      if (target && typeof target.scrollIntoView === "function") {
+        setTimeout(function () { target.scrollIntoView({ block: "start" }); }, 30);
+      }
+    }
+  });
+})();
+
+</script>
+</body>
+</html>

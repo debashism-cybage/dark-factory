@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dark Factory as a Service — AI-Native Engineering for Product &amp; Enterprise Clients</title>
+<style>
+/* ============================================================
+   THEME TOKENS — dark (default) + light
+   ============================================================ */
+:root{
+  --bg:#0B0E14;
+  --bg-2:#0F131A;
+  --panel:#12161D;
+  --panel-2:#181D26;
+  --line:#262C38;
+  --text:#E8EAED;
+  --text-dim:#9AA3B2;
+  --muted:#6B7280;
+  --accent:#3DDC97;      /* signal green — "service live" */
+  --accent-dim:#16352A;
+  --gold:#E8B23D;        /* premium/enterprise accent */
+  --gold-dim:#3A2E12;
+  --red:#FF6B6B;
+  --shadow: 0 8px 24px rgba(0,0,0,0.35);
+  --display: 'Space Grotesk', 'Arial', sans-serif;
+  --body: 'IBM Plex Sans', 'Arial', sans-serif;
+  --mono: 'IBM Plex Mono', 'Courier New', monospace;
+  --rail-w: 290px;
+}
+
+html[data-theme="light"]{
+  --bg:#F7F8FA;
+  --bg-2:#FFFFFF;
+  --panel:#FFFFFF;
+  --panel-2:#F0F2F5;
+  --line:#DDE2E8;
+  --text:#171A21;
+  --text-dim:#4B5563;
+  --muted:#8A93A3;
+  --accent:#0F9D6E;
+  --accent-dim:#DCF3E9;
+  --gold:#B6791A;
+  --gold-dim:#FBF0DA;
+  --red:#D6483F;
+  --shadow: 0 8px 24px rgba(20,30,50,0.08);
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto;}
+  *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;}
+}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--body);
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s, color .25s;
+}
+
+/* ============ TOP STATUS BAR ============ */
+.statusbar{
+  position:fixed; top:0; left:0; right:0; height:40px;
+  background:var(--panel-2);
+  border-bottom:1px solid var(--line);
+  display:flex; align-items:center; gap:16px;
+  padding:0 18px;
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text-dim);
+  z-index:200;
+  letter-spacing:0.04em;
+}
+.statusbar .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent); flex-shrink:0;}
+.statusbar .seg{display:flex;align-items:center;gap:6px;}
+.statusbar .sep{color:var(--line);}
+.progress-track{width:120px;height:4px;background:var(--line);border-radius:2px;overflow:hidden;}
+#progressFill{height:100%;background:var(--gold);width:0%;transition:width .12s linear;}
+.statusbar .menu-toggle{
+  display:none;
+  background:none;border:1px solid var(--line);color:var(--text);
+  font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:3px; cursor:pointer;
+}
+
+/* Theme toggle switch */
+.theme-toggle{
+  margin-left:auto;
+  display:flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:10.5px; color:var(--text-dim);
+}
+.toggle-track{
+  width:42px; height:22px; border-radius:11px; background:var(--line);
+  position:relative; cursor:pointer; border:1px solid var(--line); flex-shrink:0;
+  transition:background .2s;
+}
+.toggle-thumb{
+  position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+  background:var(--gold); transition:left .2s, background .2s;
+}
+html[data-theme="light"] .toggle-thumb{ left:22px; background:var(--accent); }
+.toggle-track .ic{position:absolute; top:3px; font-size:10px; line-height:1; pointer-events:none;}
+.toggle-track .ic.sun{right:4px;}
+.toggle-track .ic.moon{left:4px;}
+
+/* ============ LEFT RAIL NAV ============ */
+.rail{
+  position:fixed; top:40px; left:0; bottom:0; width:var(--rail-w);
+  background:var(--panel);
+  border-right:1px solid var(--line);
+  overflow-y:auto;
+  z-index:150;
+  padding:20px 0 40px;
+  transition:background .25s, border-color .25s;
+}
+.rail::-webkit-scrollbar{width:6px;}
+.rail::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+
+.rail-brand{ padding:0 20px 18px; border-bottom:1px solid var(--line); margin-bottom:14px; }
+.rail-brand .eyebrow{ font-family:var(--mono); font-size:10px; color:var(--gold); letter-spacing:0.12em; text-transform:uppercase; }
+.rail-brand h1{ font-family:var(--display); font-size:18px; font-weight:700; margin:6px 0 0; line-height:1.3; color:var(--text); }
+
+.rail-section-label{ font-family:var(--mono); font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; padding:14px 20px 6px; }
+
+.rail nav a{
+  display:flex; align-items:center; gap:10px; padding:9px 20px; color:var(--text-dim);
+  text-decoration:none; font-size:13.5px; border-left:2px solid transparent;
+  transition:background .15s, color .15s, border-color .15s;
+}
+.rail nav a:hover{background:var(--panel-2); color:var(--text);}
+.rail nav a.active{ color:var(--text); background:var(--panel-2); border-left:2px solid var(--gold); }
+.rail nav a .num{ font-family:var(--mono); font-size:10.5px; color:var(--muted); width:18px; flex-shrink:0; }
+.rail nav a.active .num{color:var(--gold);}
+
+.rail-footer{ padding:16px 20px 0; margin-top:10px; font-family:var(--mono); font-size:10px; color:var(--muted); line-height:1.6; }
+
+/* ============ MAIN CONTENT ============ */
+.main{ margin-left:var(--rail-w); margin-top:40px; max-width:1000px; padding:0 56px 80px; }
+
+section{ padding-top:64px; scroll-margin-top:56px; }
+section:first-of-type{padding-top:48px;}
+
+.eyebrow{
+  font-family:var(--mono); font-size:11.5px; color:var(--gold); text-transform:uppercase; letter-spacing:0.14em;
+  display:flex; align-items:center; gap:10px; margin-bottom:10px;
+}
+.eyebrow .line{flex:1;height:1px;background:var(--line);}
+
+h2.sec-title{ font-family:var(--display); font-size:33px; font-weight:700; margin:0 0 22px; color:var(--text); line-height:1.2; letter-spacing:-0.01em; }
+h3{ font-family:var(--display); font-size:20px; font-weight:600; color:var(--text); margin:34px 0 12px; }
+h4{ font-family:var(--body); font-size:13px; font-weight:600; color:var(--accent); margin:22px 0 8px; text-transform:uppercase; letter-spacing:0.04em; }
+p{color:var(--text-dim); margin:0 0 16px; max-width:76ch;}
+p strong{color:var(--text); font-weight:600;}
+a.inline{color:var(--accent); text-decoration:underline; text-underline-offset:2px;}
+
+ul.std, ol.std{margin:0 0 18px; padding-left:0; list-style:none;}
+ul.std li, ol.std li{ position:relative; padding-left:22px; margin-bottom:10px; color:var(--text-dim); max-width:74ch; }
+ul.std li::before{ content:"›"; position:absolute; left:2px; color:var(--gold); font-family:var(--mono); font-weight:700; }
+ol.std{counter-reset:olc;}
+ol.std li{counter-increment:olc;}
+ol.std li::before{ content:counter(olc); position:absolute; left:0; color:var(--gold); font-family:var(--mono); font-size:12px; font-weight:700; }
+
+.hr{height:1px; background:var(--line); margin:48px 0;}
+
+/* ============ HERO ============ */
+.hero{padding-top:30px; padding-bottom:10px;}
+.hero .eyebrow{margin-bottom:18px;}
+.hero h1{ font-family:var(--display); font-size:50px; font-weight:700; line-height:1.08; margin:0 0 22px; letter-spacing:-0.02em; color:var(--text); }
+.hero h1 span{color:var(--gold);}
+.hero .sub{ font-size:18px; color:var(--text-dim); max-width:66ch; margin-bottom:30px; line-height:1.6; }
+.hero-meta{
+  display:flex; gap:28px; flex-wrap:wrap; font-family:var(--mono); font-size:11.5px; color:var(--muted);
+  border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:16px 0; margin-bottom:8px;
+}
+.hero-meta b{color:var(--text-dim); font-weight:500;}
+
+/* ============ PANELS ============ */
+.panel{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:26px 28px; margin:24px 0; box-shadow:var(--shadow); }
+.panel.gold{border-color:var(--gold); background:linear-gradient(180deg, var(--gold-dim), transparent 60%);}
+.panel.accent{border-color:var(--accent); background:linear-gradient(180deg, var(--accent-dim), transparent 60%);}
+.panel-label{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.1em; color:var(--gold); margin-bottom:10px; }
+.panel.accent .panel-label{color:var(--accent);}
+.panel p:last-child{margin-bottom:0;}
+
+/* ============ TABLES ============ */
+.tbl-wrap{overflow-x:auto; margin:20px 0 28px; border:1px solid var(--line); border-radius:8px;}
+table{width:100%; border-collapse:collapse; font-size:13.5px; min-width:640px;}
+thead th{
+  background:var(--panel-2); color:var(--text); text-align:left; font-family:var(--mono);
+  font-size:11px; text-transform:uppercase; letter-spacing:0.05em; padding:11px 16px; border-bottom:1px solid var(--line); white-space:nowrap;
+}
+tbody td{padding:11px 16px; border-bottom:1px solid var(--line); color:var(--text-dim); vertical-align:top;}
+tbody tr:last-child td{border-bottom:none;}
+td.hl, th.hl{color:var(--text); font-weight:500;}
+td.num{font-family:var(--mono); color:var(--accent);}
+
+/* ============ CARD GRID ============ */
+.grid{display:grid; gap:16px; margin:22px 0 28px;}
+.grid.cols-2{grid-template-columns:1fr 1fr;}
+.grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.grid.cols-4{grid-template-columns:repeat(4,1fr);}
+.card{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px 22px; box-shadow:var(--shadow); }
+.card .card-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:10px;}
+.card h5{font-family:var(--display); font-size:16px; margin:0; color:var(--text);}
+.card .tag{ font-family:var(--mono); font-size:9.5px; padding:3px 8px; border-radius:3px; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap; }
+.tag.accent{background:var(--accent-dim); color:var(--accent);}
+.tag.gold{background:var(--gold-dim); color:var(--gold);}
+.tag.muted{background:var(--panel-2); color:var(--muted); border:1px solid var(--line);}
+.card p{font-size:13.5px; margin-bottom:0;}
+
+/* ============ COMPETITIVE LANDSCAPE: POSITIONING MAP ============ */
+.posmap-wrap{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:28px; margin:26px 0; box-shadow:var(--shadow); }
+.posmap{ position:relative; width:100%; aspect-ratio:16/10; min-height:380px; background:var(--bg-2); border:1px solid var(--line); border-radius:6px; }
+.posmap .axis-label{ position:absolute; font-family:var(--mono); font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
+.posmap .axis-x-label{ bottom:-26px; left:50%; transform:translateX(-50%); }
+.posmap .axis-y-label{ left:-30px; top:50%; transform:translateY(-50%) rotate(-90deg); transform-origin:center; white-space:nowrap; }
+.posmap .gridline{ position:absolute; background:var(--line); }
+.posmap .gridline.h{left:0; right:0; height:1px;}
+.posmap .gridline.v{top:0; bottom:0; width:1px;}
+.posmap .quadrant-label{ position:absolute; font-family:var(--mono); font-size:9.5px; color:var(--muted); opacity:0.7; text-transform:uppercase; letter-spacing:0.04em; }
+.posmap-node{
+  position:absolute; transform:translate(-50%,-50%);
+  width:auto; padding:6px 11px; border-radius:14px;
+  background:var(--panel); border:1.5px solid var(--line);
+  font-family:var(--body); font-size:12px; font-weight:600; color:var(--text);
+  cursor:default; white-space:nowrap; z-index:3;
+  transition:border-color .15s, box-shadow .15s, transform .15s;
+}
+.posmap-node:hover{ border-color:var(--gold); box-shadow:0 4px 14px rgba(0,0,0,0.25); transform:translate(-50%,-50%) scale(1.06); z-index:4; }
+.posmap-node .dot{ width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:middle; }
+.posmap-legend{ display:flex; gap:18px; flex-wrap:wrap; margin-top:34px; font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+.posmap-legend .li{display:flex; align-items:center; gap:6px;}
+.posmap-legend .dot{width:8px;height:8px;border-radius:50%;}
+
+/* ============ SERVICE CATALOG ============ */
+.catalog-card{
+  background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:0; margin-bottom:18px; overflow:hidden;
+  box-shadow:var(--shadow);
+}
+.catalog-head{ padding:20px 24px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.catalog-head .ttl{font-family:var(--display); font-size:19px; font-weight:700; color:var(--text); margin-bottom:4px;}
+.catalog-head .subt{font-family:var(--mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
+.catalog-head .price{ font-family:var(--mono); font-size:13px; color:var(--gold); text-align:right; white-space:nowrap; }
+.catalog-body{padding:18px 24px 22px; display:grid; grid-template-columns:1fr 1fr; gap:24px;}
+.catalog-body .col h6{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent); margin:0 0 10px; }
+.catalog-body p{font-size:13.5px; margin-bottom:10px;}
+
+/* ============ ENGAGEMENT MODEL TABS ============ */
+.tabs{display:flex; gap:4px; border-bottom:1px solid var(--line); margin:22px 0 0; flex-wrap:wrap;}
+.tab-btn{
+  background:none; border:none; color:var(--text-dim); font-family:var(--mono); font-size:12px;
+  padding:11px 18px; cursor:pointer; border-bottom:2px solid transparent; text-transform:uppercase; letter-spacing:0.04em;
+}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--gold); border-bottom-color:var(--gold);}
+.tab-panel{display:none; padding:24px 0 10px;}
+.tab-panel.active{display:block;}
+
+/* ============ JOURNEY MAP (Conveyor, reused concept) ============ */
+.journey-wrap{ margin:30px 0 10px; overflow-x:auto; padding-bottom:14px; }
+.journey-track{ position:relative; display:flex; min-width:940px; padding-top:10px; }
+.journey-rail-line{ position:absolute; top:54px; left:0; right:0; height:3px; background:repeating-linear-gradient(90deg, var(--line) 0 10px, transparent 10px 18px); }
+.journey-rail-fill{ position:absolute; top:54px; left:0; height:3px; width:0%; background:var(--gold); transition:width 1.4s cubic-bezier(.4,0,.2,1); }
+.station{ flex:1; position:relative; padding:0 14px; text-align:center; }
+.station .node{
+  width:34px; height:34px; border-radius:50%; background:var(--panel); border:3px solid var(--line);
+  margin:36px auto 16px; position:relative; z-index:2; display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:13px; font-weight:700; color:var(--muted);
+  transition:border-color .4s, color .4s, background .4s, box-shadow .4s;
+}
+.station.lit .node{ border-color:var(--gold); color:var(--gold); background:var(--gold-dim); box-shadow:0 0 14px rgba(232,178,61,0.4); }
+.station .stitle{font-family:var(--display); font-weight:700; font-size:14.5px; margin-bottom:6px; color:var(--text);}
+.station .stime{font-family:var(--mono); font-size:10.5px; color:var(--gold); margin-bottom:10px; display:block;}
+.station .sdesc{font-size:12.5px; color:var(--text-dim); line-height:1.55;}
+.journey-legend{ display:flex; gap:20px; justify-content:center; margin-top:8px; font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+
+/* ============ ROI CALCULATOR (provider-side framing) ============ */
+.roi-box{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:26px 28px; margin:24px 0; box-shadow:var(--shadow); }
+.roi-controls{display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-bottom:24px;}
+.roi-field label{ display:block; font-family:var(--mono); font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; }
+.roi-field .valdisp{font-family:var(--mono); color:var(--accent); float:right;}
+input[type=range]{width:100%; accent-color:var(--gold); height:4px; background:var(--line);}
+.roi-results{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:6px;}
+.roi-stat{ background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:16px; text-align:center; }
+.roi-stat .lab{font-family:var(--mono); font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;}
+.roi-stat .val{font-family:var(--mono); font-size:21px; font-weight:700; color:var(--accent);}
+.roi-stat .val.warn{color:var(--gold);}
+.roi-note{font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:16px; line-height:1.7;}
+
+/* ============ BACK TO TOP ============ */
+.totop{
+  position:fixed; bottom:26px; right:26px; z-index:180; width:42px; height:42px; border-radius:50%;
+  background:var(--panel); border:1px solid var(--line); color:var(--text-dim);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  opacity:0; pointer-events:none; transition:opacity .25s, border-color .2s, color .2s; font-size:16px; box-shadow:var(--shadow);
+}
+.totop.show{opacity:1; pointer-events:auto;}
+.totop:hover{border-color:var(--gold); color:var(--gold);}
+
+/* ============ FOOTER ============ */
+.page-footer{ border-top:1px solid var(--line); margin-top:60px; padding-top:24px; font-family:var(--mono); font-size:11px; color:var(--muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+
+.scrim{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:140; }
+.scrim.show{display:block;}
+
+/* ============ RESPONSIVE ============ */
+@media (max-width: 980px){
+  .grid.cols-3, .grid.cols-4{grid-template-columns:1fr 1fr;}
+  .roi-controls{grid-template-columns:1fr;}
+  .roi-results{grid-template-columns:1fr 1fr;}
+  .catalog-body{grid-template-columns:1fr;}
+}
+@media (max-width: 760px){
+  :root{--rail-w:240px;}
+  .main{padding:0 22px 60px;}
+  .hero h1{font-size:30px; word-wrap:normal; overflow-wrap:normal;}
+  h2.sec-title{font-size:25px;}
+  .grid.cols-2, .grid.cols-3, .grid.cols-4{grid-template-columns:1fr;}
+  .statusbar .seg.hide-mobile{display:none;}
+  .rail{ transform:translateX(-100%); transition:transform .25s ease; width:78vw; max-width:300px; }
+  .rail.open{transform:translateX(0); box-shadow:8px 0 30px rgba(0,0,0,0.5);}
+  .statusbar .menu-toggle{display:inline-block;}
+  .catalog-head{flex-direction:column;}
+  .posmap .axis-y-label{display:none;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ STATUS BAR ============ -->
+<div class="statusbar">
+  <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation">☰ MENU</button>
+  <div class="seg"><span class="dot"></span> SERVICE: AI-NATIVE DELIVERY ACTIVE</div>
+  <div class="seg sep hide-mobile">|</div>
+  <div class="seg hide-mobile">READING PROGRESS</div>
+  <div class="seg progress-track hide-mobile"><div id="progressFill"></div></div>
+  <div class="seg hide-mobile" id="currentSectionLabel">00 / OVERVIEW</div>
+  <div class="theme-toggle">
+    <span id="themeLabel">DARK</span>
+    <div class="toggle-track" id="themeToggle" role="button" aria-label="Toggle light and dark theme">
+      <span class="ic moon">🌙</span><span class="ic sun">☀️</span>
+      <div class="toggle-thumb"></div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- ============ LEFT RAIL NAV ============ -->
+<aside class="rail" id="rail">
+  <div class="rail-brand">
+    <div class="eyebrow">Service Provider Reference — v2</div>
+    <h1>Dark Factory as a Service</h1>
+  </div>
+
+  <div class="rail-section-label">Orientation</div>
+  <nav>
+    <a href="#intro" data-target="intro"><span class="num">00</span> Overview</a>
+    <a href="#concept" data-target="concept"><span class="num">01</span> The Concept, Reframed</a>
+  </nav>
+
+  <div class="rail-section-label">Market</div>
+  <nav>
+    <a href="#landscape" data-target="landscape"><span class="num">02</span> Competitive Landscape</a>
+    <a href="#demand" data-target="demand"><span class="num">03</span> Why Clients Are Buying</a>
+  </nav>
+
+  <div class="rail-section-label">The Offering</div>
+  <nav>
+    <a href="#catalog" data-target="catalog"><span class="num">04</span> Service Catalog</a>
+    <a href="#engagement" data-target="engagement"><span class="num">05</span> Engagement Models</a>
+    <a href="#journey" data-target="journey"><span class="num">06</span> Client Maturity Journey</a>
+  </nav>
+
+  <div class="rail-section-label">Delivery</div>
+  <nav>
+    <a href="#capability" data-target="capability"><span class="num">07</span> Capability Stack</a>
+    <a href="#differentiation" data-target="differentiation"><span class="num">08</span> How to Differentiate</a>
+  </nav>
+
+  <div class="rail-section-label">Economics</div>
+  <nav>
+    <a href="#roi" data-target="roi"><span class="num">09</span> Provider &amp; Client ROI</a>
+    <a href="#risk" data-target="risk"><span class="num">10</span> Risk &amp; Governance</a>
+  </nav>
+
+  <div class="rail-section-label">Close</div>
+  <nav>
+    <a href="#summary" data-target="summary"><span class="num">11</span> Executive Takeaways</a>
+  </nav>
+
+  <div class="rail-footer">
+    DARK-FACTORY-AAS // v2.0<br>
+    Self-contained · No external calls<br>
+    Vendor-neutral · Dual audience
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT ============ -->
+<main class="main">
+
+  <!-- 00 INTRO / HERO -->
+  <section id="intro">
+    <div class="hero">
+      <div class="eyebrow">Service Industry Reference Document<span class="line"></span>2025–2028</div>
+      <h1>Dark Factory <span>as a Service</span></h1>
+      <p class="sub">How global IT service providers — from IBM, Accenture and TCS to Infosys, EPAM, Globant, Cybage and Persistent Systems — are packaging AI-native software engineering into a sellable, deliverable, billable offering for product engineering and enterprise clients.</p>
+      <div class="hero-meta">
+        <div><b>Scope:</b> Landscape → Offering Catalog → Engagement Models → Delivery Capability → ROI</div>
+        <div><b>Audience:</b> Sales &amp; Delivery Leadership + Enterprise Buyers</div>
+        <div><b>Stance:</b> Vendor-neutral market analysis</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 01 CONCEPT REFRAMED -->
+  <section id="concept">
+    <div class="eyebrow">01 <span class="line"></span> Foundations</div>
+    <h2 class="sec-title">The Concept, Reframed for Service Delivery</h2>
+
+    <p>The original Dark Factory thesis describes a destination: an autonomous software pipeline where AI agents specify, build, test, deploy, and maintain code with minimal human involvement. For an <strong>enterprise buyer</strong>, that destination is a strategic question. For a <strong>service provider</strong>, it is a completely different thing: a new unit of delivery to productize, price, staff, and sell.</p>
+
+    <p>This is the central pivot of this document. Where the buyer-side view asks "should we automate our SDLC," the provider-side view asks three commercial questions instead:</p>
+
+    <div class="grid cols-3">
+      <div class="card">
+        <div class="card-top"><h5>What do we sell?</h5><span class="tag gold">Offering</span></div>
+        <p>Not "AI tools" — a packaged outcome: modernization velocity, reduced run-cost, or new product build capacity, delivered through an AI-native operating model.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>How do we price it?</h5><span class="tag gold">Commercial</span></div>
+        <p>The shift from time-and-materials staffing to outcome- and consumption-based pricing is the single biggest commercial disruption this creates for the services industry itself.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>What do we staff it with?</h5><span class="tag gold">Delivery</span></div>
+        <p>Pyramid-shaped delivery teams (many juniors, few seniors) do not match an AI-native model. The talent model inverts before the org chart does.</p>
+      </div>
+    </div>
+
+    <div class="panel gold">
+      <div class="panel-label">Why this matters more for providers than for enterprises</div>
+      <p>An enterprise can choose to move slowly on AI-native delivery and absorb the opportunity cost internally. A service provider whose revenue model is staff-augmentation cannot — every hour of human coding that an AI agent now performs is an hour of billable revenue that the traditional T&amp;M model loses, unless the provider re-prices around outcomes faster than clients demand the discount themselves.</p>
+    </div>
+  </section>
+
+  <!-- 02 COMPETITIVE LANDSCAPE -->
+  <section id="landscape">
+    <div class="eyebrow">02 <span class="line"></span> Market</div>
+    <h2 class="sec-title">Competitive Landscape: Who Is Positioning Where</h2>
+    <p>Every major IT services player has launched an AI-native or "agentic engineering" narrative since 2024. The differences are not in ambition — every provider claims the same destination — but in <strong>how far they've moved from staffing-led delivery toward platform-led, outcome-priced delivery</strong>, and <strong>how broad their play is</strong> (narrow tooling vs. full lifecycle).</p>
+
+    <div class="posmap-wrap">
+      <div class="posmap" id="posmap">
+        <div class="gridline h" style="top:50%;"></div>
+        <div class="gridline v" style="left:50%;"></div>
+        <span class="axis-label axis-x-label">Breadth of AI-Native Play →</span>
+        <span class="axis-label axis-y-label">Delivery Model Maturity →</span>
+        <span class="quadrant-label" style="top:8px; left:10px;">Staffing-led, narrow tooling</span>
+        <span class="quadrant-label" style="top:8px; right:10px;">Staffing-led, full lifecycle</span>
+        <span class="quadrant-label" style="bottom:8px; left:10px;">Platform-led, narrow tooling</span>
+        <span class="quadrant-label" style="bottom:8px; right:10px;">Platform-led, full lifecycle</span>
+
+        <!-- Nodes: x = breadth (0-100, left-right), y = maturity (0-100, top=staffing-led(low maturity)/bottom=platform-led(high maturity) -->
+        <!-- positioned via inline style top/left percentages -->
+        <div class="posmap-node" style="left:78%; top:22%;"><span class="dot" style="background:#4285F4;"></span>IBM Consulting</div>
+        <div class="posmap-node" style="left:70%; top:30%;"><span class="dot" style="background:#A100FF;"></span>Accenture</div>
+        <div class="posmap-node" style="left:62%; top:35%;"><span class="dot" style="background:#0F9D6E;"></span>TCS</div>
+        <div class="posmap-node" style="left:55%; top:42%;"><span class="dot" style="background:#007CC3;"></span>Infosys</div>
+        <div class="posmap-node" style="left:48%; top:28%;"><span class="dot" style="background:#E84142;"></span>Cognizant</div>
+        <div class="posmap-node" style="left:35%; top:55%;"><span class="dot" style="background:#FF6F3C;"></span>EPAM</div>
+        <div class="posmap-node" style="left:30%; top:68%;"><span class="dot" style="background:#7B61FF;"></span>Globant</div>
+        <div class="posmap-node" style="left:42%; top:60%;"><span class="dot" style="background:#E8B23D;"></span>Persistent Systems</div>
+        <div class="posmap-node" style="left:25%; top:48%;"><span class="dot" style="background:#3DDC97;"></span>Cybage</div>
+        <div class="posmap-node" style="left:60%; top:65%;"><span class="dot" style="background:#FF9900;"></span>Wipro</div>
+        <div class="posmap-node" style="left:20%; top:30%;"><span class="dot" style="background:#9AA3B2;"></span>Mid-tier / Boutique firms</div>
+      </div>
+      <div class="posmap-legend">
+        <div class="li"><span class="dot" style="background:#4285F4;"></span> IBM Consulting</div>
+        <div class="li"><span class="dot" style="background:#A100FF;"></span> Accenture</div>
+        <div class="li"><span class="dot" style="background:#0F9D6E;"></span> TCS</div>
+        <div class="li"><span class="dot" style="background:#007CC3;"></span> Infosys</div>
+        <div class="li"><span class="dot" style="background:#E84142;"></span> Cognizant</div>
+        <div class="li"><span class="dot" style="background:#FF6F3C;"></span> EPAM</div>
+        <div class="li"><span class="dot" style="background:#7B61FF;"></span> Globant</div>
+        <div class="li"><span class="dot" style="background:#E8B23D;"></span> Persistent Systems</div>
+        <div class="li"><span class="dot" style="background:#3DDC97;"></span> Cybage</div>
+        <div class="li"><span class="dot" style="background:#FF9900;"></span> Wipro</div>
+        <div class="li"><span class="dot" style="background:#9AA3B2;"></span> Mid-tier / Boutique</div>
+      </div>
+    </div>
+    <p style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:-12px;">Illustrative positioning based on publicly stated AI engineering strategy, partnership depth (hyperscaler/model labs), and observed delivery model shifts. Not a ranking.</p>
+
+    <h3>How each archetype is actually pitching this</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Provider Archetype</th><th class="hl">Public Narrative</th><th>Where the substance is</th><th>Where it's still mostly marketing</th></tr></thead>
+        <tbody>
+          <tr><td class="hl">IBM Consulting</td><td>"AI-first consulting" anchored to watsonx and IBM's own model/governance stack</td><td>Strong in regulated-industry governance framing, mainframe/legacy modernization</td><td>Platform lock-in risk; agentic delivery still largely staffing-augmented underneath</td></tr>
+          <tr><td class="hl">Accenture</td><td>"Reinvention" narrative; massive scale investment in AI re-skilling (100,000+ staff)</td><td>Broadest hyperscaler partnership network (AWS, Microsoft, Google, NVIDIA)</td><td>Scale of re-skilling claims vs. depth of actual agentic delivery proof points</td></tr>
+          <tr><td class="hl">TCS</td><td>"AI.Cloud" and a unified agentic AI platform narrative across BFSI-heavy client base</td><td>Deep vertical (BFSI, retail) accelerators; large captive delivery centers</td><td>Pace of internal pyramid restructuring lags the external narrative</td></tr>
+          <tr><td class="hl">Infosys</td><td>Topaz — an AI-first offering layer marketed across the existing portfolio</td><td>Strong applied-AI accelerator library; clear packaging discipline</td><td>Differentiation vs. other large Indian heritage providers is still narrative-thin</td></tr>
+          <tr><td class="hl">EPAM</td><td>Engineering-first "DIAL" (open AI orchestration) positioning; product mindset over staffing mindset</td><td>Credible with product engineering buyers; strong open-source orchestration story</td><td>Smaller balance sheet than IBM/Accenture limits some platform investment bets</td></tr>
+          <tr><td class="hl">Globant</td><td>"Studio" model (e.g. AI Studio) — productized pods sold as outcome units, not headcount</td><td>Genuinely furthest along in selling pods/outcomes rather than FTEs in marketing language</td><td>Scale is smaller; harder to prove at large regulated-enterprise scale</td></tr>
+          <tr><td class="hl">Persistent Systems</td><td>Deep partnership-led narrative (notably with a major cloud/AI hyperscaler) for accelerated modernization</td><td>Credible mid-market and ISV/product engineering specialization</td><td>Brand recognition at C-suite level still behind the largest players</td></tr>
+          <tr><td class="hl">Cybage &amp; similar mid-tier specialists</td><td>Engineering depth and account-embedded delivery; less PR-led, more delivery-led</td><td>High technical credibility in specific accounts; agile in adopting new tooling</td><td>Limited marketing reach; positioning often invisible outside existing accounts</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 03 WHY CLIENTS ARE BUYING -->
+  <section id="demand">
+    <div class="eyebrow">03 <span class="line"></span> Market</div>
+    <h2 class="sec-title">Why Clients Are Buying This Now</h2>
+    <p>Demand signals from both product engineering clients (ISVs, software-led businesses) and traditional enterprise clients (BFSI, healthcare, retail, manufacturing) converge on the same underlying drivers, expressed differently by buyer type.</p>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="card-top"><h5>Product Engineering Clients</h5><span class="tag accent">ISV / Software-led</span></div>
+        <p>Buying to compress time-to-market for new features, extend runway by reducing burn on commodity engineering, and free senior engineers for differentiated product work rather than maintenance.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>Enterprise Clients</h5><span class="tag gold">BFSI / Healthcare / Retail</span></div>
+        <p>Buying to accelerate legacy modernization backlogs that have been stalled for years, reduce run-cost on maintenance-heavy estates, and de-risk talent attrition on aging tech stacks (COBOL, legacy Java).</p>
+      </div>
+    </div>
+
+    <h3>The demand signal, by the numbers</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Signal</th><th class="hl">Data point</th><th>Implication for providers</th></tr></thead>
+        <tbody>
+          <tr><td class="hl">Modernization backlog</td><td>Most large enterprises report 30–50% of their application estate is "legacy" by their own classification</td><td>Single largest addressable wedge for AI-native modernization-as-a-service</td></tr>
+          <tr><td class="hl">Maintenance cost ratio</td><td>Typically 60–80% of enterprise IT spend goes to run/maintain vs. build new</td><td>The economic case for AI-native maintenance automation sells itself if proven safely</td></tr>
+          <tr><td class="hl">Internal AI tooling adoption gap</td><td>Most enterprises have deployed AI coding assistants narrowly (pilot teams) vs. at delivery scale</td><td>Providers can offer scaled, governed rollout as a service rather than a tool license</td></tr>
+          <tr><td class="hl">Verification capability gap</td><td>Few enterprises have built dedicated AI-output verification practices internally</td><td>This is the highest-margin, hardest-to-commoditize service line available today</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel accent">
+      <div class="panel-label">The buying motion that is actually happening</div>
+      <p>Clients are rarely asking for "a Dark Factory." They are asking for faster modernization, lower run-cost, and confidence that AI-generated code won't introduce new risk. The provider's job is translating the Dark Factory capability into those three asks — not selling the metaphor itself.</p>
+    </div>
+  </section>
+
+  <!-- 04 SERVICE CATALOG -->
+  <section id="catalog">
+    <div class="eyebrow">04 <span class="line"></span> The Offering</div>
+    <h2 class="sec-title">Service Catalog</h2>
+    <p>A representative catalog structure used across the industry, organized by client objective rather than by technology. Names vary by provider; the underlying shape is now fairly consistent across IBM, Accenture, TCS, Infosys, EPAM, Globant, Persistent, and mid-tier specialists.</p>
+
+    <div class="catalog-card">
+      <div class="catalog-head">
+        <div>
+          <div class="ttl">AI-Native Modernization Sprint</div>
+          <div class="subt">Legacy estate → modernized, AI-verified codebase</div>
+        </div>
+        <div class="price">Typical: 8–14 week fixed-scope engagement</div>
+      </div>
+      <div class="catalog-body">
+        <div class="col">
+          <h6>What's delivered</h6>
+          <p>Automated assessment of a legacy application estate, AI-assisted code transformation (language/framework upgrade or re-platforming), and a verification report covering functional parity and security posture.</p>
+        </div>
+        <div class="col">
+          <h6>Best fit</h6>
+          <p>Enterprises with a defined, bounded legacy estate (e.g. a Java version upgrade across 100+ services) where success criteria are objectively testable — directly modeled on proven patterns like large-scale Java migrations.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="catalog-card">
+      <div class="catalog-head">
+        <div>
+          <div class="ttl">Agentic Engineering Pod</div>
+          <div class="subt">Outcome-priced feature delivery capacity</div>
+        </div>
+        <div class="price">Typical: Quarterly outcome-based retainer</div>
+      </div>
+      <div class="catalog-body">
+        <div class="col">
+          <h6>What's delivered</h6>
+          <p>A small human pod (architect, verification lead, 1-2 senior engineers) operating a fleet of AI coding agents to deliver a committed feature throughput per quarter, priced per feature/story point rather than per head.</p>
+        </div>
+        <div class="col">
+          <h6>Best fit</h6>
+          <p>Product engineering clients with well-defined backlogs and existing test coverage, who want predictable delivery cost without managing a large engineering headcount themselves.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="catalog-card">
+      <div class="catalog-head">
+        <div>
+          <div class="ttl">AI Verification &amp; Governance as a Service</div>
+          <div class="subt">The highest-margin, fastest-growing line</div>
+        </div>
+        <div class="price">Typical: Ongoing managed service, per-repo or per-seat</div>
+      </div>
+      <div class="catalog-body">
+        <div class="col">
+          <h6>What's delivered</h6>
+          <p>AI-on-AI code review, behavioral contract testing, provenance tracking, and tiered-autonomy policy management layered onto a client's existing AI coding tool deployment — regardless of which vendor's assistant they use.</p>
+        </div>
+        <div class="col">
+          <h6>Best fit</h6>
+          <p>Enterprises that have already deployed AI coding tools broadly (often via direct vendor licenses) but lack the internal verification discipline to scale usage safely — particularly regulated industries.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="catalog-card">
+      <div class="catalog-head">
+        <div>
+          <div class="ttl">Run &amp; Maintain, AI-Augmented</div>
+          <div class="subt">Managed services re-platformed around AI agents</div>
+        </div>
+        <div class="price">Typical: Multi-year managed services contract, re-priced</div>
+      </div>
+      <div class="catalog-body">
+        <div class="col">
+          <h6>What's delivered</h6>
+          <p>Existing application support and maintenance contracts re-architected so routine tickets (patches, minor enhancements, dependency updates) are resolved by AI agents with human sign-off, freeing the support team for complex incidents.</p>
+        </div>
+        <div class="col">
+          <h6>Best fit</h6>
+          <p>Long-tenure managed services clients where the provider already holds deep institutional knowledge of the estate — the precondition for safely automating maintenance work.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 ENGAGEMENT MODELS -->
+  <section id="engagement">
+    <div class="eyebrow">05 <span class="line"></span> The Offering</div>
+    <h2 class="sec-title">Engagement &amp; Pricing Models</h2>
+    <p>The commercial model is where the real disruption to the services industry sits. Select a model below to see how it works and where it fits.</p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" data-tab="tm">Time &amp; Materials (Legacy)</button>
+      <button class="tab-btn" data-tab="outcome">Outcome-Based</button>
+      <button class="tab-btn" data-tab="consumption">Consumption-Based</button>
+      <button class="tab-btn" data-tab="hybrid">Hybrid / Risk-Share</button>
+    </div>
+
+    <div class="tab-panel active" data-panel="tm">
+      <p><strong>How it works:</strong> Client pays for engineer hours/days regardless of AI tooling used internally. This is the inherited model from traditional staff augmentation.</p>
+      <p><strong>Why it's under pressure:</strong> If AI tooling makes an engineer 30% more productive, a client paying by the hour effectively pays the same total cost for more output — but increasingly, sophisticated buyers know this and demand the discount be passed through, eroding margin without a model change.</p>
+      <p><strong>Where it still fits:</strong> Highly exploratory or ambiguous-scope work where output cannot yet be defined well enough to price on outcome.</p>
+    </div>
+
+    <div class="tab-panel" data-panel="outcome">
+      <p><strong>How it works:</strong> Price is tied to a defined deliverable — features shipped, applications migrated, defects resolved — independent of the hours or headcount used to produce it.</p>
+      <p><strong>Why providers are moving here:</strong> It lets a provider capture the margin upside from AI-driven productivity gains instead of passing 100% of it to the client as a rate discount. Globant's "Studio" pod model is the clearest public example of this shift in marketing language.</p>
+      <p><strong>Where it fits:</strong> Well-scoped modernization sprints, defined feature backlogs with existing test coverage, and migration projects with objectively verifiable completion criteria.</p>
+    </div>
+
+    <div class="tab-panel" data-panel="consumption">
+      <p><strong>How it works:</strong> Client pays based on actual usage of the AI-native delivery platform — agent-hours consumed, repos under management, or verification cycles run — similar to cloud consumption billing.</p>
+      <p><strong>Why it's emerging:</strong> It mirrors how the underlying AI inference cost itself is billed, making margin management more transparent for both sides, and scales naturally with client usage rather than fixed headcount commitments.</p>
+      <p><strong>Where it fits:</strong> Ongoing managed services and the Verification-as-a-Service line, where workload genuinely varies month to month.</p>
+    </div>
+
+    <div class="tab-panel" data-panel="hybrid">
+      <p><strong>How it works:</strong> A reduced fixed retainer covering a baseline team, plus shared-savings or bonus structures tied to productivity gains, defect reduction, or schedule acceleration achieved through the AI-native model.</p>
+      <p><strong>Why it's gaining ground:</strong> It lets risk-averse enterprise buyers commit to AI-native delivery without fully abandoning the predictability of a staffing model, while still rewarding the provider for genuine productivity gains delivered.</p>
+      <p><strong>Where it fits:</strong> Large, strategic, multi-year enterprise modernization programs where neither party wants to bet the entire contract on one pricing model.</p>
+    </div>
+  </section>
+
+  <!-- 06 CLIENT MATURITY JOURNEY -->
+  <section id="journey">
+    <div class="eyebrow">06 <span class="line"></span> The Offering</div>
+    <h2 class="sec-title">Client Maturity Journey: L0 → L4, Delivered as a Service</h2>
+    <p>This is the same autonomy spectrum used to assess buyer-side readiness, but mapped here to what a service provider actually delivers and sells at each stage of a client engagement.</p>
+
+    <div class="journey-wrap">
+      <div class="journey-track" id="journeyTrack">
+        <div class="journey-rail-line"></div>
+        <div class="journey-rail-fill" id="journeyFill"></div>
+
+        <div class="station" data-station="0">
+          <div class="node">L0</div>
+          <div class="stitle">Assess</div>
+          <span class="stime">Engagement Wk 1–4</span>
+          <div class="sdesc">Provider runs an AI-readiness and codebase assessment — tooling gaps, test coverage, verification maturity, and a prioritized automation roadmap.</div>
+        </div>
+
+        <div class="station" data-station="1">
+          <div class="node">L1</div>
+          <div class="stitle">Enable</div>
+          <span class="stime">Mo. 1–3</span>
+          <div class="sdesc">Provider deploys and configures AI coding assistants across the client's engineering org, with baseline productivity and quality metrics instrumented.</div>
+        </div>
+
+        <div class="station" data-station="2">
+          <div class="node">L2</div>
+          <div class="stitle">Augment</div>
+          <span class="stime">Mo. 3–9</span>
+          <div class="sdesc">Provider-staffed pods take on bounded AI-assisted delivery (bug fixes, test generation, scoped features) inside the client's existing review process.</div>
+        </div>
+
+        <div class="station" data-station="3">
+          <div class="node">L3</div>
+          <div class="stitle">Automate</div>
+          <span class="stime">Mo. 9–18</span>
+          <div class="sdesc">Provider operates autonomous agents for full features and modernization workstreams, with provider-run verification gates replacing line-by-line client review.</div>
+        </div>
+
+        <div class="station" data-station="4">
+          <div class="node">L4</div>
+          <div class="stitle">Operate</div>
+          <span class="stime">Mo. 18+</span>
+          <div class="sdesc">Provider runs a managed, governed AI-native delivery pipeline for the client's commodity engineering, billed on outcome or consumption, with the client retaining only architectural and strategic oversight.</div>
+        </div>
+      </div>
+    </div>
+    <div class="journey-legend"><span>● Lit segment = service line active</span><span>○ Unlit = not yet engaged</span></div>
+
+    <h3>What the provider sells at each stage</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Stage</th><th class="hl">Provider revenue line</th><th>Typical pricing model</th></tr></thead>
+        <tbody>
+          <tr><td class="hl">Assess</td><td>Fixed-fee advisory engagement</td><td>Time &amp; Materials or fixed fee</td></tr>
+          <tr><td class="hl">Enable</td><td>Tooling deployment &amp; change management</td><td>Fixed fee + per-seat licensing pass-through</td></tr>
+          <tr><td class="hl">Augment</td><td>AI-assisted staff augmentation pods</td><td>Time &amp; Materials transitioning to outcome-based</td></tr>
+          <tr><td class="hl">Automate</td><td>Modernization sprints, agentic engineering pods</td><td>Outcome-based</td></tr>
+          <tr><td class="hl">Operate</td><td>Managed AI-native delivery / Verification-as-a-Service</td><td>Consumption-based or hybrid risk-share</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 07 CAPABILITY STACK -->
+  <section id="capability">
+    <div class="eyebrow">07 <span class="line"></span> Delivery</div>
+    <h2 class="sec-title">Capability Stack a Provider Must Build</h2>
+    <p>Selling Dark Factory services credibly requires capability investment most providers are still building. This is the internal build-list, regardless of which client-facing brand name is used.</p>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="card-top"><h5>Multi-Model Orchestration Layer</h5><span class="tag accent">Foundational</span></div>
+        <p>The ability to route work across Claude, GPT, Gemini, and open-source models based on task type and client data-residency constraints, rather than betting the entire delivery model on one vendor.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>Vertical Accelerator Libraries</h5><span class="tag accent">Foundational</span></div>
+        <p>Pre-built, reusable transformation patterns for common modernization paths (mainframe-to-cloud, monolith-to-microservices, legacy Java/​.NET upgrades) that shorten assessment-to-delivery time.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>Independent Verification Practice</h5><span class="tag gold">Differentiator</span></div>
+        <p>A practice separate from the delivery pod that owns AI-output quality assurance — the credibility asset that lets a provider claim safe automation, not just fast automation.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>Provenance &amp; Compliance Tooling</h5><span class="tag gold">Differentiator</span></div>
+        <p>Audit-grade tracking of which model, prompt, and human approver produced every change — increasingly a contractual requirement in regulated-industry RFPs.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>Talent Re-Skilling Pipeline</h5><span class="tag muted">Organizational</span></div>
+        <p>A structured path moving engineers from "writes code" to "verifies and orchestrates AI output" — the same transition clients are demanding, but the provider must do it first to staff it credibly.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>Outcome Measurement Framework</h5><span class="tag muted">Organizational</span></div>
+        <p>Standardized metrics (defect-escape rate, cycle time, reviewer load) that make outcome-based pricing defensible in front of a client's procurement and audit functions.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 DIFFERENTIATION -->
+  <section id="differentiation">
+    <div class="eyebrow">08 <span class="line"></span> Delivery</div>
+    <h2 class="sec-title">How to Differentiate in a Crowded Market</h2>
+    <p>Every provider in the landscape map claims an AI-native story. The differentiation that actually survives client due diligence tends to cluster around four axes.</p>
+
+    <ol class="std">
+      <li><strong>Proof over narrative.</strong> Clients increasingly ask for referenceable, quantified outcomes (e.g. "$260M saved migrating 30,000 apps") rather than capability slideware. Providers who can show audited before/after metrics from real engagements win more often than providers with the most polished AI narrative.</li>
+      <li><strong>Vertical depth over horizontal breadth.</strong> A provider with deep BFSI or healthcare domain accelerators will out-compete a generalist on regulated-industry deals, even if the generalist has a larger AI research budget.</li>
+      <li><strong>Verification credibility as the actual moat.</strong> Because the underlying AI models are increasingly commoditized and accessible to every provider, the defensible differentiation is in the verification and governance layer wrapped around them — not the model itself.</li>
+      <li><strong>Willingness to re-price, not just re-tool.</strong> Providers who only deploy AI tooling but keep pure T&amp;M pricing leave the productivity gain on the table for clients to eventually demand back as a discount. Providers who proactively move to outcome or hybrid pricing capture and keep more of the value created.</li>
+    </ol>
+
+    <div class="panel">
+      <div class="panel-label">A note on mid-tier and boutique specialists</div>
+      <p>Firms like Cybage that compete on deep account-embedded engineering relationships rather than brand scale have a structural advantage in one respect: they can move faster on delivery model change because they carry less organizational inertia than the largest providers, even if they have less marketing reach to broadcast it.</p>
+    </div>
+  </section>
+
+  <!-- 09 ROI -->
+  <section id="roi">
+    <div class="eyebrow">09 <span class="line"></span> Economics</div>
+    <h2 class="sec-title">Provider &amp; Client ROI</h2>
+    <p>This calculator models the engagement from both sides at once — what the client saves, and what the provider needs to charge to remain margin-positive after inference and verification costs. Adjust the sliders to reflect a specific engagement.</p>
+
+    <div class="roi-box">
+      <div class="roi-controls">
+        <div class="roi-field">
+          <label>Client engineering headcount in scope <span class="valdisp" id="hcVal">200</span></label>
+          <input type="range" id="hcSlider" min="20" max="1000" step="10" value="200">
+        </div>
+        <div class="roi-field">
+          <label>Client fully-loaded cost / engineer (annual, USD) <span class="valdisp" id="costVal">$250,000</span></label>
+          <input type="range" id="costSlider" min="100000" max="450000" step="10000" value="250000">
+        </div>
+        <div class="roi-field">
+          <label>Target delivery stage <span class="valdisp" id="lvlVal">L2 — Augment</span></label>
+          <input type="range" id="lvlSlider" min="1" max="4" step="1" value="2">
+        </div>
+        <div class="roi-field">
+          <label>Provider margin target on the engagement <span class="valdisp" id="marginVal">30%</span></label>
+          <input type="range" id="marginSlider" min="10" max="50" step="1" value="30">
+        </div>
+      </div>
+
+      <div class="roi-results">
+        <div class="roi-stat">
+          <div class="lab">Client productivity gain</div>
+          <div class="val" id="resGain">+25%</div>
+        </div>
+        <div class="roi-stat">
+          <div class="lab">Client value created / yr</div>
+          <div class="val" id="resValue">$15.0M</div>
+        </div>
+        <div class="roi-stat">
+          <div class="lab">Provider deliverable price / yr</div>
+          <div class="val warn" id="resPrice">$10.5M</div>
+        </div>
+        <div class="roi-stat">
+          <div class="lab">Client net savings / yr</div>
+          <div class="val" id="resNet">$4.5M</div>
+        </div>
+      </div>
+
+      <div class="roi-note" id="roiFormula">
+        FORMULA — Client value created = headcount × cost/engineer × productivity gain at selected stage. Provider deliverable price is set as a discount to client value created such that the client retains a clear savings incentive over doing it themselves, while the provider holds its target margin after inference and verification costs (modeled at the same ratios as the buyer-side reference: inference scales steeply by stage, verification at 50% of inference).<br>
+        Planning-grade estimates for illustration; actual deal pricing depends on competitive dynamics, contract structure, and risk-sharing terms.
+      </div>
+      <div class="roi-note" id="roiWarning" style="display:none; color:var(--red); margin-top:10px;"></div>
+    </div>
+
+    <h3>Reference engagement economics (200-engineer client scope)</h3>
+    <div class="grid cols-3">
+      <div class="card">
+        <div class="card-top"><h5>L1/L2 Engagement</h5><span class="tag accent">Low risk, fast close</span></div>
+        <p>Tooling deployment + augmentation pods. Client sees 18-25x ROI versus doing it alone; provider margin is healthy but deal size is modest.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>L3 Engagement</h5><span class="tag gold">Medium risk, larger deal</span></div>
+        <p>Modernization sprints + agentic pods priced on outcome. Larger contract value; requires proven verification practice to win against incumbents.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h5>L4 Engagement</h5><span class="tag muted">Highest value, longest sales cycle</span></div>
+        <p>Managed AI-native delivery, multi-year. Highest annual contract value and stickiest relationship, but longest due-diligence cycle and highest governance bar to win.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 RISK & GOVERNANCE -->
+  <section id="risk">
+    <div class="eyebrow">10 <span class="line"></span> Economics</div>
+    <h2 class="sec-title">Risk &amp; Governance Considerations for Providers</h2>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Risk</th><th class="hl">Description</th><th>Mitigation a provider should offer</th></tr></thead>
+        <tbody>
+          <tr><td class="hl">Liability for AI-generated defects</td><td>Contractual ambiguity over who is liable when AI-generated code causes a production incident</td><td>Explicit liability clauses tied to the tiered-autonomy model; named human accountability at each gate</td></tr>
+          <tr><td class="hl">IP and licensing provenance</td><td>Client exposure to copyright or license contamination from AI training data</td><td>Provenance tracking and license-compliance scanning included as a standard line item, not an add-on</td></tr>
+          <tr><td class="hl">Margin compression from commoditization</td><td>As AI coding tools become commoditized, the staffing-led portion of the value chain compresses fast</td><td>Move revenue mix toward verification, governance, and outcome-priced lines ahead of the compression, not after</td></tr>
+          <tr><td class="hl">Talent attrition during transition</td><td>Engineers anxious about role change may leave before the re-skilling pipeline is ready</td><td>Transparent internal communication and a funded re-skilling path, mirroring what's recommended to clients</td></tr>
+          <tr><td class="hl">Over-promising autonomy maturity</td><td>Sales teams marketing "full Dark Factory" capability the delivery org cannot yet safely operate</td><td>Tie sales enablement materials to the actual internal capability stage, audited periodically</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 11 SUMMARY -->
+  <section id="summary">
+    <div class="eyebrow">11 <span class="line"></span> Close</div>
+    <h2 class="sec-title">Executive Takeaways</h2>
+
+    <ul class="std">
+      <li>Every major provider — IBM, Accenture, TCS, Infosys, EPAM, Globant, Persistent, Cybage, and others — has launched an AI-native engineering narrative; the real differentiation is delivery-model maturity and breadth, not ambition.</li>
+      <li>The biggest commercial disruption is pricing, not technology: providers that stay on pure Time &amp; Materials will see clients claw back AI-driven productivity gains as rate discounts.</li>
+      <li>The highest-margin, least-commoditized service line is verification and governance — not code generation, which is converging toward a commodity across providers.</li>
+      <li>The client maturity journey (Assess → Enable → Augment → Automate → Operate) gives providers a structured land-and-expand motion that matches naturally to outcome and consumption-based pricing as the relationship matures.</li>
+      <li>Mid-tier and boutique specialists can compete on delivery-model agility even without the marketing reach of the largest players, provided they invest early in the same capability stack (orchestration, verification, provenance, re-skilling).</li>
+    </ul>
+
+    <div class="panel gold">
+      <div class="panel-label">Bottom line for service provider leadership</div>
+      <p>Build the verification and governance practice now — it is the asset that survives commoditization of the underlying AI models. Move at least the modernization and managed-services lines to outcome or consumption pricing within the next contract renewal cycle. Treat the client maturity journey as the sales motion, not just a delivery framework: each stage is a separate, sellable engagement with its own pricing model.</p>
+    </div>
+
+    <div class="page-footer">
+      <span>Dark Factory as a Service — v2 Executive Reference</span>
+      <span>Self-contained HTML · No external dependencies · Light/Dark theme · Built for offline distribution</span>
+    </div>
+  </section>
+
+</main>
+
+<button class="totop" id="totop" aria-label="Back to top">↑</button>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- Theme toggle ---------- */
+  var htmlEl = document.documentElement;
+  var themeToggle = document.getElementById('themeToggle');
+  var themeLabel = document.getElementById('themeLabel');
+
+  function applyTheme(theme){
+    htmlEl.setAttribute('data-theme', theme);
+    themeLabel.textContent = theme === 'dark' ? 'DARK' : 'LIGHT';
+    try { localStorage.setItem('dfaas-theme', theme); } catch(e){ /* storage may be unavailable; non-fatal */ }
+  }
+
+  (function initTheme(){
+    var saved = null;
+    try { saved = localStorage.getItem('dfaas-theme'); } catch(e){}
+    if (saved === 'light' || saved === 'dark') {
+      applyTheme(saved);
+    } else {
+      var existing = htmlEl.getAttribute('data-theme');
+      applyTheme(existing === 'light' ? 'light' : 'dark');
+    }
+  })();
+
+  themeToggle.addEventListener('click', function(){
+    var current = htmlEl.getAttribute('data-theme');
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  });
+  themeToggle.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      var current = htmlEl.getAttribute('data-theme');
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+  });
+  themeToggle.setAttribute('tabindex', '0');
+
+  /* ---------- Section order for nav + progress ---------- */
+  var sectionIds = ["intro","concept","landscape","demand","catalog","engagement","journey","capability","differentiation","roi","risk","summary"];
+  var sectionLabels = {
+    intro:"00 / OVERVIEW", concept:"01 / CONCEPT", landscape:"02 / LANDSCAPE",
+    demand:"03 / DEMAND", catalog:"04 / CATALOG", engagement:"05 / ENGAGEMENT",
+    journey:"06 / MATURITY JOURNEY", capability:"07 / CAPABILITY",
+    differentiation:"08 / DIFFERENTIATION", roi:"09 / ROI",
+    risk:"10 / RISK", summary:"11 / TAKEAWAYS"
+  };
+  var sections = sectionIds.map(function(id){ return document.getElementById(id); });
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('.rail nav a'));
+  var progressFill = document.getElementById('progressFill');
+  var currentLabel = document.getElementById('currentSectionLabel');
+  var totopBtn = document.getElementById('totop');
+
+  function onScroll(){
+    var scrollY = window.scrollY || window.pageYOffset;
+    var docH = document.documentElement.scrollHeight - window.innerHeight;
+    var pct = docH > 0 ? Math.min(100, Math.max(0, (scrollY / docH) * 100)) : 0;
+    progressFill.style.width = pct + "%";
+
+    totopBtn.classList.toggle('show', scrollY > 500);
+
+    var thresholdY = scrollY + 120;
+    var activeId = sectionIds[0];
+    for (var i = 0; i < sections.length; i++){
+      var el = sections[i];
+      if (!el) continue;
+      if (el.offsetTop <= thresholdY) {
+        activeId = sectionIds[i];
+      }
+    }
+    navLinks.forEach(function(a){
+      a.classList.toggle('active', a.getAttribute('data-target') === activeId);
+    });
+    if (currentLabel) currentLabel.textContent = sectionLabels[activeId] || "";
+
+    updateJourneyFill();
+  }
+
+  window.addEventListener('scroll', onScroll, { passive:true });
+  window.addEventListener('resize', onScroll);
+
+  /* ---------- Mobile rail toggle ---------- */
+  var rail = document.getElementById('rail');
+  var scrim = document.getElementById('scrim');
+  var menuToggle = document.getElementById('menuToggle');
+
+  navLinks.forEach(function(a){
+    a.addEventListener('click', function(){
+      rail.classList.remove('open');
+      scrim.classList.remove('show');
+    });
+  });
+
+  menuToggle.addEventListener('click', function(){
+    rail.classList.toggle('open');
+    scrim.classList.toggle('show');
+  });
+  scrim.addEventListener('click', function(){
+    rail.classList.remove('open');
+    scrim.classList.remove('show');
+  });
+
+  totopBtn.addEventListener('click', function(){
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  /* ---------- Journey map animation ---------- */
+  var journeySection = document.getElementById('journey');
+  var stations = Array.prototype.slice.call(document.querySelectorAll('.station'));
+  var journeyFill = document.getElementById('journeyFill');
+  var journeyAnimated = false;
+
+  function updateJourneyFill(){
+    if (journeyAnimated || !journeySection) return;
+    var rect = journeySection.getBoundingClientRect();
+    if (rect.top < window.innerHeight * 0.7) {
+      journeyAnimated = true;
+      stations.forEach(function(st, idx){
+        setTimeout(function(){ st.classList.add('lit'); }, idx * 220);
+      });
+      journeyFill.style.width = "100%";
+    }
+  }
+
+  stations.forEach(function(st){
+    st.addEventListener('click', function(){
+      stations.forEach(function(s){ s.style.transform = ''; });
+      st.style.transform = 'translateY(-3px)';
+    });
+  });
+
+  /* ---------- Strategy / Engagement tabs ---------- */
+  var tabBtns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var tabPanels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+  tabBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var target = btn.getAttribute('data-tab');
+      tabBtns.forEach(function(b){ b.classList.toggle('active', b === btn); });
+      tabPanels.forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-panel') === target); });
+    });
+  });
+
+  /* ---------- ROI Calculator (provider/client dual-sided) ---------- */
+  var hcSlider = document.getElementById('hcSlider');
+  var costSlider = document.getElementById('costSlider');
+  var lvlSlider = document.getElementById('lvlSlider');
+  var marginSlider = document.getElementById('marginSlider');
+
+  var hcVal = document.getElementById('hcVal');
+  var costVal = document.getElementById('costVal');
+  var lvlVal = document.getElementById('lvlVal');
+  var marginVal = document.getElementById('marginVal');
+
+  var resGain = document.getElementById('resGain');
+  var resValue = document.getElementById('resValue');
+  var resPrice = document.getElementById('resPrice');
+  var resNet = document.getElementById('resNet');
+  var roiWarning = document.getElementById('roiWarning');
+
+  var levelMeta = {
+    1: { label: "L1 — Enable", gainLow:0.05, gainHigh:0.10, infFloor:19, infCeil:39 },
+    2: { label: "L2 — Augment", gainLow:0.25, gainHigh:0.35, infFloor:50, infCeil:200 },
+    3: { label: "L3 — Automate", gainLow:0.35, gainHigh:0.55, infFloor:500, infCeil:2000 },
+    4: { label: "L4 — Operate", gainLow:0.50, gainHigh:0.75, infFloor:2000, infCeil:20000 }
+  };
+
+  function fmtUSD(n){
+    if (Math.abs(n) >= 1000000) return "$" + (n/1000000).toFixed(1).replace(/\.0$/,'') + "M";
+    if (Math.abs(n) >= 1000) return "$" + Math.round(n/1000) + "K";
+    return "$" + Math.round(n);
+  }
+
+  function recalc(){
+    var hc = parseInt(hcSlider.value, 10);
+    var costPerEng = parseInt(costSlider.value, 10);
+    var lvl = levelMeta[lvlSlider.value];
+    var marginPct = parseInt(marginSlider.value, 10) / 100;
+
+    hcVal.textContent = hc;
+    costVal.textContent = "$" + costPerEng.toLocaleString();
+    lvlVal.textContent = lvl.label;
+    marginVal.textContent = marginPct * 100 + "%";
+
+    var gainMid = (lvl.gainLow + lvl.gainHigh) / 2;
+    var totalPayroll = hc * costPerEng;
+    var clientValueCreated = totalPayroll * gainMid;
+
+    // Inference + verification cost (provider's internal cost), using mid-point of level's inference range
+    var infMidMonthly = (lvl.infFloor + lvl.infCeil) / 2;
+    var annualInference = hc * infMidMonthly * 12;
+    var verificationCost = annualInference * 0.5;
+    var providerInternalCost = annualInference + verificationCost;
+
+    // Provider prices the deliverable: must cover internal cost + margin target,
+    // while staying meaningfully below clientValueCreated so the client retains savings incentive.
+    // Price = internalCost / (1 - margin), capped so client retains at least 25% of value created as net savings.
+    var priceByMargin = providerInternalCost / (1 - marginPct);
+    var priceCapForClientIncentive = clientValueCreated * 0.75; // client keeps at least 25% of value
+    var providerPrice = Math.min(priceByMargin, priceCapForClientIncentive);
+    if (providerPrice < providerInternalCost) providerPrice = providerInternalCost; // never price below cost
+
+    var clientNetSavings = clientValueCreated - providerPrice;
+
+    resGain.textContent = "+" + Math.round(gainMid * 100) + "%";
+    resValue.textContent = fmtUSD(clientValueCreated);
+    resPrice.textContent = fmtUSD(providerPrice);
+    resNet.textContent = fmtUSD(clientNetSavings);
+    resNet.classList.toggle('warn', clientNetSavings < 0);
+
+    if (clientNetSavings < 0) {
+      roiWarning.style.display = 'block';
+      roiWarning.textContent = "⚠ At this headcount, the selected delivery stage does not amortize: fixed inference and verification overhead exceeds the value created. Higher autonomy stages (L3/L4) generally require larger in-scope headcount to justify the platform investment — try increasing headcount or selecting a lower stage.";
+    } else {
+      roiWarning.style.display = 'none';
+    }
+  }
+
+  [hcSlider, costSlider, marginSlider].forEach(function(el){
+    el.addEventListener('input', recalc);
+  });
+  lvlSlider.addEventListener('input', recalc);
+
+  recalc();
+  onScroll();
+})();
+</script>
+
+</body>
+</html>
